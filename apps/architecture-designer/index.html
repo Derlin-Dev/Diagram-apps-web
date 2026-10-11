@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Editor visual para diseñar diagramas de arquitectura de aplicaciones.">
+  <title>ArqSketch — Diagramador de aplicaciones</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="../../shared/visual-theme.css">
+</head>
+<body class="architecture-app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div><strong>ArqSketch</strong><small>Diagramador de aplicaciones</small></div>
+    </div>
+    <div class="top-actions">
+      <a class="btn btn-quiet home-link" href="../../index.html">← Inicio</a>
+      <button class="btn btn-quiet" id="newDiagramBtn" title="Crear un diagrama nuevo">Nuevo</button>
+      <button class="btn btn-quiet" id="importJsonBtn" title="Abrir un diagrama ArqSketch desde JSON">Abrir JSON</button>
+      <button class="btn btn-quiet" id="exportJsonBtn">Exportar JSON</button>
+      <button class="btn btn-primary" id="exportSvgBtn">Exportar SVG</button>
+      <input type="file" id="importJsonFile" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="sidebar" id="libraryPanel">
+      <div class="sidebar-heading">
+        <div><p class="eyebrow">COMPONENTES</p><h2>Biblioteca</h2></div>
+      </div>
+      <p class="hint">Haz clic en un componente para añadirlo al lienzo. También puedes arrastrarlo.</p>
+      <div class="component-list">
+        <button class="component" draggable="true" data-type="frontend"><span class="component-icon frontend">▤</span><span><b>Frontend</b><small>Web o móvil</small></span><span class="plus">+</span></button>
+        <button class="component" draggable="true" data-type="backend"><span class="component-icon backend">⌘</span><span><b>Backend / API</b><small>Lógica de negocio</small></span><span class="plus">+</span></button>
+        <button class="component" draggable="true" data-type="database"><span class="component-icon database">▤</span><span><b>Base de datos</b><small>Persistencia</small></span><span class="plus">+</span></button>
+        <button class="component" draggable="true" data-type="service"><span class="component-icon service">◇</span><span><b>Servicio</b><small>Proceso externo</small></span><span class="plus">+</span></button>
+        <button class="component" draggable="true" data-type="cloud"><span class="component-icon cloud">☁</span><span><b>Nube / Hosting</b><small>Infraestructura</small></span><span class="plus">+</span></button>
+        <button class="component" draggable="true" data-type="user"><span class="component-icon user">♙</span><span><b>Usuario</b><small>Actor del sistema</small></span><span class="plus">+</span></button>
+      </div>
+      <div class="sidebar-section">
+        <p class="eyebrow">CONECTORES</p>
+        <button class="tool-row" id="connectModeBtn"><span class="tool-icon">↗</span><span><b>Conectar componentes</b><small>Selecciona origen y destino</small></span><kbd>C</kbd></button>
+        <button class="tool-row" id="deleteBtn"><span class="tool-icon danger">⌫</span><span><b>Eliminar selección</b><small>Quitar nodo o conexión</small></span><kbd>Del</kbd></button>
+      </div>
+      <div class="sidebar-tip"><span class="tip-icon">✦</span><div><b>Consejo</b><p>Ctrl/Cmd+clic o Mayús+arrastrar selecciona varios. Ctrl/Cmd+C/V/D copia, pega o duplica; clic derecho abre acciones.</p></div></div>
+      <div class="sidebar-footer">ARQUITECTURA CLARA, DESDE EL PRINCIPIO</div>
+    </aside>
+
+    <button class="panel-resizer library-resizer" id="libraryResizer" type="button" role="slider" aria-label="Cambiar ancho de Biblioteca" aria-orientation="vertical" aria-valuemin="190" aria-valuemax="360" title="Arrastra para cambiar el ancho de Biblioteca"></button>
+
+    <section class="workspace">
+      <div class="workspace-tabs" role="tablist" aria-label="Vistas del diagrama">
+        <button class="workspace-tab active" id="diagramTab" type="button" role="tab" aria-selected="true" aria-controls="diagramView">▦ Diagrama</button>
+        <button class="workspace-tab" id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonView"> { } JSON</button>
+      </div>
+      <section class="diagram-view" id="diagramView" role="tabpanel" aria-labelledby="diagramTab">
+        <div class="canvas-toolbar">
+          <div class="diagram-title"><span class="live-dot"></span><div><strong id="diagramTitle">Mi aplicación</strong><small id="elementCount">0 componentes · 0 conexiones</small></div></div>
+          <div class="canvas-tools">
+            <button class="icon-btn" id="zoomOutBtn" title="Alejar">−</button><span id="zoomLabel">100%</span><button class="icon-btn" id="zoomInBtn" title="Acercar">+</button>
+            <span class="toolbar-divider"></span>
+            <button class="icon-btn" id="undoBtn" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
+            <button class="icon-btn" id="redoBtn" title="Rehacer (Ctrl+Y)" aria-label="Rehacer">↷</button>
+            <button class="icon-btn" id="fitBtn" title="Ajustar todos los componentes a la vista">⤢</button>
+            <button class="icon-btn" id="gridBtn" title="Mostrar u ocultar cuadrícula">▦</button>
+          </div>
+        </div>
+        <div class="canvas-wrap" id="canvasWrap">
+          <svg id="connectionsSvg" class="connections-svg" aria-label="Conexiones entre componentes"></svg>
+          <div id="canvas" class="canvas" tabindex="0" aria-label="Lienzo del diagrama">
+            <div class="empty-state" id="emptyState">
+              <div class="empty-art"><span class="art-node n1"></span><span class="art-node n2"></span><span class="art-node n3"></span><span class="art-line l1"></span><span class="art-line l2"></span></div>
+              <h3>Tu arquitectura empieza aquí</h3>
+              <p>Añade componentes desde la biblioteca o usa una plantilla para comenzar.</p>
+              <button class="btn btn-primary" id="starterTemplateBtn">Cargar ejemplo de arquitectura</button>
+            </div>
+          </div>
+          <div class="canvas-status"><span id="modeStatus">Modo: selección</span><span>Arrastra los nodos para organizarlos</span></div>
+          <div class="selection-actions" id="selectionActions" aria-label="Acciones para la selección múltiple" hidden>
+            <span id="selectionCount"></span>
+            <button type="button" data-selection-action="align-left" title="Alinear por el borde izquierdo">Alinear ←</button>
+            <button type="button" data-selection-action="align-top" title="Alinear por el borde superior">Alinear ↑</button>
+            <button type="button" data-selection-action="distribute-horizontal" title="Distribuir horizontalmente">Distribuir ↔</button>
+            <button type="button" data-selection-action="distribute-vertical" title="Distribuir verticalmente">Distribuir ↕</button>
+          </div>
+          <div class="selection-marquee" id="selectionMarquee" hidden aria-hidden="true"></div>
+        </div>
+      </section>
+      <section class="json-view" id="jsonView" role="tabpanel" aria-labelledby="jsonTab" hidden>
+        <div class="json-toolbar"><span>Representación JSON actual del diagrama</span><button class="btn btn-quiet" id="copyDiagramJsonBtn" type="button">Copiar JSON</button></div>
+        <pre id="diagramJson" class="diagram-json" tabindex="0" aria-label="JSON del diagrama" aria-live="polite"></pre>
+      </section>
+    </section>
+
+    <button class="panel-resizer properties-resizer" id="propertiesResizer" type="button" role="slider" aria-label="Cambiar ancho de Propiedades" aria-orientation="vertical" aria-valuemin="320" aria-valuemax="420" title="Arrastra para cambiar el ancho de Propiedades"></button>
+
+    <aside class="properties" id="propertiesPanel">
+      <div class="properties-heading"><div><p class="eyebrow">CONFIGURACIÓN</p><h2>Propiedades</h2></div><span class="settings-symbol">☷</span></div>
+      <div id="noSelection" class="no-selection"><div class="select-illustration">⌁</div><b>Ningún elemento seleccionado</b><p>Selecciona un componente o una conexión del lienzo para ver sus propiedades.</p></div>
+      <form id="propertyForm" class="property-form hidden">
+        <details class="property-group" open>
+          <summary>Información general</summary>
+          <div class="property-group-content">
+            <label for="nodeName">Nombre</label><input id="nodeName" maxlength="50" autocomplete="off">
+            <label for="nodeType">Tipo de componente</label><input id="nodeType" disabled>
+            <label for="nodeDescription">Descripción</label><textarea id="nodeDescription" rows="4" maxlength="240" placeholder="¿Qué responsabilidad tiene este componente?"></textarea>
+          </div>
+        </details>
+        <details class="property-group">
+          <summary>Icono y tecnología</summary>
+          <div class="property-group-content">
+            <label for="nodeIconSearch">Buscar icono o tecnología</label>
+            <input id="nodeIconSearch" type="search" maxlength="60" autocomplete="off" placeholder="Ej.: React, PostgreSQL, cola..." aria-label="Buscar icono por nombre o tipo">
+            <div id="selectedIcon" class="selected-icon" aria-live="polite"></div>
+            <div id="iconPicker" class="icon-picker">
+              <section class="icon-results-section">
+                <h4>Iconos integrados</h4>
+                <div id="localIconResults" class="icon-results" role="group" aria-label="Iconos integrados"></div>
+              </section>
+              <section class="icon-results-section">
+                <h4>Iconify</h4>
+                <p id="remoteIconStatus" class="icon-picker-status" aria-live="polite">Escribe al menos dos caracteres para buscar iconos en línea.</p>
+                <div id="remoteIconResults" class="icon-results" role="group" aria-label="Resultados de Iconify"></div>
+              </section>
+            </div>
+          </div>
+        </details>
+        <details class="property-group">
+          <summary id="componentDetailsSummary">Configuración específica</summary>
+          <div class="property-group-content">
+            <section id="componentDetails" class="component-details" aria-label="Información específica del componente"></section>
+          </div>
+        </details>
+        <div class="property-meta"><span>IDENTIFICADOR</span><code id="nodeId">—</code></div>
+        <button type="button" class="btn btn-danger-outline" id="deleteSelectedBtn">Eliminar componente</button>
+      </form>
+      <form id="edgePropertyForm" class="property-form hidden">
+        <p class="edge-summary" id="edgeSummary"></p>
+        <label for="edgeLabel">Etiqueta o protocolo</label>
+        <input id="edgeLabel" maxlength="120" autocomplete="off" placeholder="Ej.: HTTPS, SQL, eventos">
+        <button type="button" class="btn btn-danger-outline" id="deleteEdgePropertyBtn">Eliminar conexión</button>
+      </form>
+      <div class="properties-bottom"><span class="save-indicator"><i></i> Cambios en el navegador</span><button class="text-btn" id="clearBtn">Limpiar lienzo</button></div>
+    </aside>
+  </main>
+  <div class="context-menu" id="contextMenu" role="menu" aria-label="Acciones del elemento" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="js/diagram.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

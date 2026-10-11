@@ -1,0 +1,9 @@
+{
+  "name": "db-designer",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Portal de herramientas de diseño de sistemas en el navegador",
+  "scripts": {
+    "test": "node --test apps/*/tests/*.test.js"
+  }
+}

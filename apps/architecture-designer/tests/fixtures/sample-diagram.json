@@ -1,0 +1,30 @@
+{
+  "app": "ArqSketch",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "sample-frontend",
+      "type": "frontend",
+      "name": "Web",
+      "description": "Interfaz de usuario",
+      "x": 80,
+      "y": 100
+    },
+    {
+      "id": "sample-api",
+      "type": "backend",
+      "name": "API",
+      "description": "Servicios de aplicación",
+      "x": 320,
+      "y": 100
+    }
+  ],
+  "edges": [
+    {
+      "id": "sample-connection",
+      "from": "sample-frontend",
+      "to": "sample-api",
+      "label": "HTTPS"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "app": "ArqSketch",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "web",
+      "type": "frontend",
+      "name": "Sitio web",
+      "description": "Interfaz para los usuarios",
+      "icon": "globe",
+      "details": {
+        "platform": "Web",
+        "framework": "React",
+        "baseUrl": "https://app.ejemplo.com",
+        "access": "Público",
+        "authMethod": "OAuth 2.0"
+      },
+      "x": 80,
+      "y": 100
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "name": "API",
+      "description": "Procesa las solicitudes",
+      "icon": "code",
+      "details": {
+        "basePath": "https://api.ejemplo.com/v1",
+        "runtime": "Node.js",
+        "endpoints": [
+          {
+            "method": "GET",
+            "path": "/productos",
+            "access": "Público",
+            "authRequired": false,
+            "authMethod": ""
+          },
+          {
+            "method": "POST",
+            "path": "/pedidos",
+            "access": "Privado",
+            "authRequired": true,
+            "authMethod": "JWT / Bearer token"
+          }
+        ]
+      },
+      "x": 320,
+      "y": 100
+    },
+    {
+      "id": "database",
+      "type": "database",
+      "name": "Base de datos",
+      "description": "Almacena la información",
+      "icon": "database",
+      "details": {
+        "engine": "PostgreSQL",
+        "databaseName": "app",
+        "deployment": "Administrado",
+        "environment": "Producción",
+        "access": "Privado",
+        "authMethod": "Usuario y contraseña"
+      },
+      "x": 560,
+      "y": 100
+    }
+  ],
+  "edges": [
+    {
+      "id": "web-api",
+      "from": "web",
+      "to": "api",
+      "label": "HTTPS"
+    },
+    {
+      "id": "api-database",
+      "from": "api",
+      "to": "database",
+      "label": "SQL"
+    }
+  ]
+}

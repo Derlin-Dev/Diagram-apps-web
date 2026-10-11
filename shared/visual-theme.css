@@ -1,0 +1,317 @@
+:root {
+  --bg: #0b0f19;
+  --panel: #111725;
+  --panel2: #151d2d;
+  --line: #273247;
+  --muted: #8b97ad;
+  --text: #edf2fb;
+  --blue: #8b7cff;
+  --blue2: #6c5ce7;
+  --canvas: #0c1220;
+  --ink: #edf2fb;
+  --font: "DM Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --display: "Space Grotesk", "DM Sans", Inter, ui-sans-serif, system-ui, sans-serif;
+  color-scheme: dark;
+  font-family: var(--font);
+  color: var(--text);
+}
+
+body {
+  color: var(--text);
+  font-family: var(--font);
+}
+
+body.database-app {
+  background: var(--bg);
+}
+
+.database-app .topbar {
+  background: #0d121e;
+  border-color: var(--line);
+}
+
+.database-app .brand-icon {
+  background: linear-gradient(145deg, #7668e8, #5143bd);
+  box-shadow: 0 5px 18px #6c5ce74a;
+}
+
+.database-app .brand .home-link {
+  color: var(--muted);
+}
+
+.database-app .brand .home-link:hover {
+  color: var(--text);
+}
+
+.database-app .btn {
+  border-color: #2c374b;
+  background: #151d2c;
+}
+
+.database-app .btn:hover,
+.database-app .icon-btn:hover {
+  background: #202840;
+}
+
+.database-app .btn.primary,
+.database-app .tool.active {
+  background: var(--blue2);
+  border-color: var(--blue);
+}
+
+.database-app .btn.primary:hover {
+  background: #7c6ef2;
+}
+
+.database-app .sidebar {
+  background: linear-gradient(180deg, var(--panel), #0e1421);
+  border-color: var(--line);
+}
+
+.database-app .tool:hover {
+  background: #192235;
+}
+
+.database-app .hint,
+.database-app .muted {
+  color: var(--muted);
+}
+
+.database-app .side-divider {
+  background: var(--line);
+}
+
+.database-app .type-chip {
+  border-color: var(--line);
+  background: var(--panel2);
+}
+
+.database-app .type-chip b {
+  background: #292448;
+  color: #c1b8ff;
+}
+
+.database-app .resize-handle {
+  background: linear-gradient(180deg, #8b7c6666, #6c5ce71f);
+  border-color: #8b7c6633;
+}
+
+.database-app .resize-handle:hover {
+  background: linear-gradient(180deg, #a99dff99, #6c5ce733);
+}
+
+.database-app .resize-handle::before {
+  background: #b7adff;
+}
+
+.database-app .editor-tabs,
+.database-app .editor-content,
+.database-app .sql-panel {
+  border-color: var(--line);
+  background: #0d1320;
+}
+
+.database-app .editor-tabs {
+  background: #101624;
+}
+
+.database-app .editor-tabs .tab.active {
+  background: #151d2d;
+  border-top-color: var(--blue);
+}
+
+.database-app .tab.active {
+  color: #c4bcff;
+  border-bottom-color: var(--blue);
+}
+
+.database-app .canvas-toolbar {
+  background: #111725;
+  border-color: var(--line);
+  color: #a7b1c5;
+}
+
+.database-app .diagram-search input,
+.database-app .control,
+.database-app .input,
+.database-app .field-editor input,
+.database-app .field-editor select {
+  border-color: #2c374b;
+  background: #0d1320;
+  color: var(--text);
+}
+
+.database-app .diagram-search input:focus,
+.database-app .control:focus,
+.database-app .input:focus,
+.database-app .sql-editor:focus-visible {
+  border-color: var(--blue);
+}
+
+.database-app .search-results,
+.database-app .diagram-context-menu {
+  border-color: #39345e;
+  background: #111725;
+}
+
+.database-app .search-result {
+  color: var(--text);
+}
+
+.database-app .search-result:hover,
+.database-app .search-result:focus-visible,
+.database-app .diagram-context-menu button:hover,
+.database-app .diagram-context-menu button:focus-visible {
+  background: #282442;
+}
+
+.database-app .search-result-kind {
+  color: #b5aaff;
+}
+
+.database-app .search-result-table,
+.database-app .search-empty,
+.database-app .search-overflow {
+  color: var(--muted);
+}
+
+.database-app .icon-btn {
+  border-color: #2c374b;
+  background: #151d2c;
+  color: var(--text);
+}
+
+.database-app .canvas {
+  color: var(--ink);
+  background-color: #0c1220;
+  background-image: radial-gradient(#273249 1px, transparent 1px);
+  background-size: 22px 22px;
+  border-color: var(--line);
+}
+
+.database-app #tablesLayer {
+  pointer-events: none;
+}
+
+.database-app .table-card {
+  pointer-events: auto;
+}
+
+.database-app .canvas-empty {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.database-app .canvas-empty button {
+  pointer-events: auto;
+}
+
+.database-app .table-card {
+  background: #151e2e;
+  border-color: var(--table-color, #7668e8);
+  box-shadow: 0 8px 24px #0005;
+}
+
+.database-app .table-card.selected {
+  box-shadow: 0 0 0 2px #8b7cff55, 0 10px 28px #0006;
+}
+
+.database-app .column-row {
+  border-color: #29354a;
+  color: #edf2fb;
+}
+
+.database-app .column-key {
+  color: #f0c477;
+}
+
+.database-app .column-type {
+  color: #93a0b8;
+}
+
+.database-app .column-row.search-target {
+  background: #332b3f;
+  box-shadow: inset 3px 0 #b5aaff;
+}
+
+.database-app .canvas-empty {
+  color: #aab5ca;
+}
+
+.database-app .empty-symbol {
+  color: #9e92ff;
+}
+
+.database-app .relation-line,
+.database-app .relation-mark {
+  stroke: #7280a1;
+}
+
+.database-app .relation-line.active,
+.database-app .relation-mark.active {
+  stroke: #a99dff;
+}
+
+.database-app .relation-label {
+  fill: #aab5ca;
+}
+
+.database-app .relation-label.active {
+  fill: #c3baff;
+}
+
+.database-app .table-card:focus-visible,
+.database-app .canvas:focus-visible,
+.database-app .btn:focus-visible,
+.database-app .tool:focus-visible,
+.database-app .mini-btn:focus-visible,
+.database-app .icon-btn:focus-visible,
+.database-app .tab:focus-visible,
+.database-app .control:focus-visible,
+.database-app .input:focus-visible {
+  outline-color: #a99dff;
+}
+
+.architecture-app {
+  --bg: #0b0f19;
+  --panel: #111725;
+  --panel2: #151d2d;
+  --line: #273247;
+  --muted: #8b97ad;
+  --text: #edf2fb;
+  --blue: #8b7cff;
+  --blue2: #6c5ce7;
+}
+
+.architecture-app .topbar,
+.architecture-app .sidebar,
+.architecture-app .properties,
+.architecture-app .workspace {
+  font-family: var(--font);
+}
+
+.architecture-app .btn-primary {
+  background: var(--blue2);
+  border-color: var(--blue);
+}
+
+.architecture-app .btn-primary:hover {
+  background: #7c6ef2;
+}
+
+.architecture-app .btn:focus-visible,
+.architecture-app .icon-btn:focus-visible,
+.architecture-app .component:focus-visible,
+.architecture-app .tool-row:focus-visible {
+  outline: 2px solid #a99dff;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .database-app *,
+  .architecture-app *,
+  body.portal * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DB Designer — Diseñador relacional</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="../../shared/visual-theme.css" />
+</head>
+<body class="database-app">
+  <header class="topbar">
+    <div class="brand"><span class="brand-icon">▤</span><div><strong>DB Designer</strong><small>Diseña tu base de datos relacional</small><a class="home-link" href="../../index.html">← Volver al inicio</a></div></div>
+    <div class="top-actions">
+      <button class="btn" id="newBtn">＋ Nuevo</button>
+      <button class="btn" id="openBtn">↥ Abrir JSON</button>
+      <button class="btn" id="importSqlBtn">⇧ Importar SQL</button>
+      <button class="btn" id="saveBtn">↓ Guardar JSON</button>
+      <button class="btn" id="duplicateTableBtn">⧉ Duplicar tabla</button>
+      <button class="btn" id="copyTableBtn">⎘ Copiar tabla</button>
+      <button class="btn" id="pasteTableBtn">⎙ Pegar tabla</button>
+      <button class="btn" id="exportDocsBtn">▤ Documentación</button>
+      <button class="btn primary" id="exportBtn">⇩ Exportar SQL</button>
+      <input type="file" id="fileInput" accept=".json,application/json" hidden />
+    </div>
+  </header>
+
+  <noscript><p style="padding:20px">DB Designer necesita JavaScript para funcionar.</p></noscript>
+
+  <main class="layout">
+    <aside class="sidebar left">
+      <h2>Herramientas</h2>
+      <button class="tool active" id="selectBtn"><span>⌖</span> Seleccionar</button>
+      <button class="tool" id="addTableBtn"><span>▦</span> Tabla nueva</button>
+      <button class="tool" id="relationModeBtn"><span>↔</span> Crear relación</button>
+      <button class="tool" id="templatesBtn"><span>▤</span> Plantillas</button>
+      <p class="hint" id="modeHint">Arrastra las tablas para organizarlas. Espacio + arrastre desplaza el lienzo; clic derecho abre acciones.</p>
+      <div class="side-divider"></div>
+      <h2>Tipos de relación</h2>
+      <div class="type-chip"><b>1 : 1</b><span>Uno a uno</span></div>
+      <div class="type-chip"><b>1 : N</b><span>Uno a muchos</span></div>
+      <div class="type-chip"><b>N : M</b><span>Muchos a muchos (tabla puente)</span></div>
+      <div class="side-divider"></div>
+      <h2>Tipos de datos</h2>
+      <div class="type-chip"><b>INT</b><span>Entero</span></div>
+      <div class="type-chip"><b>BIGINT</b><span>Entero grande</span></div>
+      <div class="type-chip"><b>VARCHAR(255)</b><span>Texto corto</span></div>
+      <div class="type-chip"><b>TEXT</b><span>Texto largo</span></div>
+      <div class="type-chip"><b>DECIMAL(10,2)</b><span>Decimal</span></div>
+      <div class="type-chip"><b>DATE</b><span>Fecha</span></div>
+      <div class="type-chip"><b>DATETIME</b><span>Fecha y hora</span></div>
+      <div class="type-chip"><b>BOOLEAN</b><span>Verdadero/falso</span></div>
+      <div class="type-chip"><b>UUID</b><span>Identificador único</span></div>
+      <div class="side-divider"></div>
+      <h2>Diagrama</h2>
+      <label class="field-label" for="dialectSelect">Motor SQL</label>
+      <select id="dialectSelect" class="control">
+        <option value="mysql">MySQL</option><option value="postgres">PostgreSQL</option><option value="sqlite">SQLite</option>
+      </select>
+      <p class="hint">El SQL generado se adapta al motor seleccionado. Revisa el resultado antes de ejecutarlo.</p>
+    </aside>
+    <div class="resize-handle vertical" data-side="left" aria-label="Redimensionar panel izquierdo" title="Ajustar ancho del panel izquierdo"></div>
+
+    <section class="workspace">
+      <div class="editor-tabs" role="tablist" aria-label="Vistas del proyecto">
+        <button class="tab active" id="canvasTab" data-tab="canvas" role="tab" aria-selected="true" aria-controls="canvasView">▦ Diagrama</button>
+        <button class="tab" data-tab="sql" role="tab" aria-selected="false" aria-controls="outputView">⌘ SQL</button>
+        <button class="tab" data-tab="json" role="tab" aria-selected="false" aria-controls="outputView">{ } JSON</button>
+        <button class="tab" data-tab="summary" role="tab" aria-selected="false" aria-controls="outputView">☷ Resumen</button>
+        <span class="tab-spacer"></span>
+        <div class="tab-actions" id="outputActions" hidden>
+          <button class="btn small" id="applySqlChangesBtn" title="Analizar el SQL y revisar los cambios antes de aplicarlos al diagrama" hidden>Revisar y aplicar</button>
+          <button class="icon-btn" id="resetSqlBtn" title="Descartar edición y restaurar el SQL generado" aria-label="Restaurar SQL generado" hidden>↺</button>
+          <button class="icon-btn" id="downloadBtn" title="Descargar la vista actual" aria-label="Descargar la vista actual">↓</button>
+          <button class="icon-btn" id="copyBtn" title="Copiar contenido" aria-label="Copiar contenido">⎘</button>
+        </div>
+      </div>
+      <div class="editor-content">
+        <section class="editor-view canvas-view" id="canvasView" role="tabpanel" aria-labelledby="canvasTab">
+          <div class="canvas-toolbar">
+            <div><span class="status-dot"></span><span id="statusText">Proyecto sin guardar</span></div>
+            <div class="diagram-search">
+              <input id="diagramSearch" type="search" aria-label="Buscar tablas y campos" placeholder="Buscar tabla o campo…" autocomplete="off" />
+              <div id="searchResults" class="search-results" role="listbox" aria-label="Resultados de búsqueda" hidden></div>
+            </div>
+            <div class="canvas-actions">
+              <button class="icon-btn" id="undoBtn" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>↶</button>
+              <button class="icon-btn" id="redoBtn" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled>↷</button>
+              <button class="icon-btn" id="organizeTablesBtn" title="Organizar todas las tablas" aria-label="Organizar todas las tablas">▦</button>
+              <button class="icon-btn" id="exportSvgBtn" title="Exportar diagrama como SVG" aria-label="Exportar diagrama como SVG">SVG</button>
+              <button class="icon-btn" id="exportPngBtn" title="Exportar diagrama como PNG" aria-label="Exportar diagrama como PNG">PNG</button>
+              <button class="icon-btn" id="zoomOut" title="Reducir zoom" aria-label="Reducir zoom">−</button>
+              <span id="zoomLabel" title="Clic para volver al 100%">100%</span>
+              <button class="icon-btn" id="zoomIn" title="Aumentar zoom" aria-label="Aumentar zoom">＋</button>
+              <button class="icon-btn" id="centerSelectedBtn" title="Centrar tabla seleccionada" aria-label="Centrar tabla seleccionada">◎</button>
+              <button class="icon-btn" id="fitBtn" title="Ajustar a la pantalla" aria-label="Ajustar a la pantalla">⛶</button>
+            </div>
+          </div>
+          <div id="canvas" class="canvas" tabindex="0" aria-label="Lienzo del diagrama; espacio y arrastrar para desplazar">
+            <svg id="links" class="links" aria-hidden="true"></svg>
+            <div id="tablesLayer"></div>
+            <div class="canvas-empty" id="emptyState"><div class="empty-symbol">▦</div><h2>Tu modelo empieza aquí</h2><p>Crea una tabla o carga el ejemplo para explorar el diseñador.</p><button class="btn primary" id="sampleBtn">Cargar ejemplo</button></div>
+          </div>
+        </section>
+        <section class="editor-view sql-panel" id="outputView" role="tabpanel" aria-label="Salida del proyecto" hidden>
+          <pre id="output" class="output"></pre>
+          <textarea id="sqlEditor" class="output sql-editor" aria-label="Editar SQL generado" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" hidden></textarea>
+          <div id="sqlDraftNotice" class="sql-draft-notice" aria-live="polite" hidden>Hay cambios SQL sin aplicar. Revísalos antes de actualizar el diagrama.</div>
+        </section>
+      </div>
+    </section>
+
+    <div class="resize-handle vertical" data-side="right" aria-label="Redimensionar panel derecho" title="Ajustar ancho del panel derecho"></div>
+    <aside class="sidebar right">
+      <h2>Propiedades</h2>
+      <div id="properties">
+        <div class="properties-empty"><span>⌖</span><h3>Selecciona una tabla</h3><p>Haz clic en una tabla del diagrama para editar su nombre, campos y claves.</p></div>
+      </div>
+      <div class="side-divider"></div>
+      <h2>Relaciones</h2>
+      <div id="relationsList" class="relations-list"><p class="muted">Aún no hay relaciones.</p></div>
+      <div class="side-divider"></div>
+      <div class="tip-card"><strong>✦ Consejos</strong><ul>
+        <li>Usa nombres claros y consistentes para tablas y campos.</li>
+        <li>1:1 y 1:N agregan una FK en la tabla destino; N:M crea una tabla puente.</li>
+        <li>Atajos: Ctrl+Z deshacer, Ctrl+Y rehacer, Supr elimina la tabla, Esc sale del modo relación.</li>
+      </ul></div>
+    </aside>
+  </main>
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="js/model.js"></script>
+  <script src="js/sql.js"></script>
+  <script src="js/sql-import.js"></script>
+  <script src="js/docs.js"></script>
+  <script src="js/templates.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
