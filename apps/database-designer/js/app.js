@@ -18,6 +18,7 @@
   const canvas = $('#canvas');
   const layer = $('#tablesLayer');
   const links = $('#links');
+  const relationControls = $('#relationControls');
 
   const state = {
     tables: [], relations: [], selected: null,
@@ -27,6 +28,7 @@
   const cardEls = new Map();
   let idCounter = 1;
   let toastTimer;
+  let selectedRelation = null;
   let spacePan = false;
   let activePan = null;
   let contextMenu = null;
@@ -284,6 +286,7 @@
 
   function select(id) {
     state.selected = id;
+    selectedRelation = null;
     renderCanvas();
     renderProperties();
   }
@@ -454,55 +457,220 @@
     return row ? t.y + row.offsetTop + row.offsetHeight / 2 : t.y + 54;
   }
 
-  // Notación pata de gallo: dos barras = "uno", tres puntas = "muchos".
-  function glyph(x, y, dir, kind, active, dimmed) {
+  const SIDE_VECTOR = {
+    top: { x: 0, y: -1 },
+    right: { x: 1, y: 0 },
+    bottom: { x: 0, y: 1 },
+    left: { x: -1, y: 0 },
+  };
+
+  function pointOnTable(table, anchor) {
+    const card = cardEls.get(table.id);
+    const width = card?.offsetWidth || 230;
+    const height = card?.offsetHeight || 160;
+    if (anchor.side === 'top') return { x: table.x + width * anchor.offset, y: table.y };
+    if (anchor.side === 'right') return { x: table.x + width, y: table.y + height * anchor.offset };
+    if (anchor.side === 'bottom') return { x: table.x + width * anchor.offset, y: table.y + height };
+    return { x: table.x, y: table.y + height * anchor.offset };
+  }
+
+  function relationGeometry(relation) {
+    const sourceTable = getTable(state, relation.sourceTable);
+    const targetTable = getTable(state, relation.targetTable);
+    if (!sourceTable || !targetTable) return null;
+    const sourceCard = cardEls.get(sourceTable.id);
+    const targetCard = cardEls.get(targetTable.id);
+    const sourceWidth = sourceCard?.offsetWidth || 230;
+    const targetWidth = targetCard?.offsetWidth || 230;
+    const sourceHeight = sourceCard?.offsetHeight || 160;
+    const targetHeight = targetCard?.offsetHeight || 160;
+    const sourceY = anchorY(sourceTable, relation.sourceField);
+    const targetY = anchorY(targetTable, relation.targetField);
+    let sourceDirection, targetDirection;
+    if (sourceTable.x + sourceWidth + 30 <= targetTable.x) {
+      sourceDirection = SIDE_VECTOR.right;
+      targetDirection = SIDE_VECTOR.left;
+    } else if (targetTable.x + targetWidth + 30 <= sourceTable.x) {
+      sourceDirection = SIDE_VECTOR.left;
+      targetDirection = SIDE_VECTOR.right;
+    } else {
+      sourceDirection = SIDE_VECTOR.right;
+      targetDirection = SIDE_VECTOR.right;
+    }
+    const sourceAnchor = relation.sourceAnchor || {
+      side: sourceDirection.x === 1 ? 'right' : 'left',
+      offset: Math.max(0, Math.min(1, (sourceY - sourceTable.y) / sourceHeight)),
+    };
+    const targetAnchor = relation.targetAnchor || {
+      side: targetDirection.x === 1 ? 'right' : 'left',
+      offset: Math.max(0, Math.min(1, (targetY - targetTable.y) / targetHeight)),
+    };
+    return {
+      sourceTable,
+      targetTable,
+      sourceAnchor,
+      targetAnchor,
+      sourceDirection: SIDE_VECTOR[sourceAnchor.side],
+      targetDirection: SIDE_VECTOR[targetAnchor.side],
+      sourcePoint: relation.sourceAnchor
+        ? pointOnTable(sourceTable, sourceAnchor)
+        : { x: sourceTable.x + sourceDirection.x * (sourceDirection.x === 1 ? sourceWidth : 0), y: sourceY },
+      targetPoint: relation.targetAnchor
+        ? pointOnTable(targetTable, targetAnchor)
+        : { x: targetTable.x + (targetDirection.x === 1 ? targetWidth : 0), y: targetY },
+    };
+  }
+
+  function nearestTableAnchor(table, point) {
+    const card = cardEls.get(table.id);
+    const width = card?.offsetWidth || 230;
+    const height = card?.offsetHeight || 160;
+    const x = Math.max(table.x, Math.min(table.x + width, point.x));
+    const y = Math.max(table.y, Math.min(table.y + height, point.y));
+    const candidates = [
+      { side: 'top', distance: Math.abs(point.y - table.y), offset: (x - table.x) / width },
+      { side: 'right', distance: Math.abs(point.x - table.x - width), offset: (y - table.y) / height },
+      { side: 'bottom', distance: Math.abs(point.y - table.y - height), offset: (x - table.x) / width },
+      { side: 'left', distance: Math.abs(point.x - table.x), offset: (y - table.y) / height },
+    ];
+    const nearest = candidates.reduce((best, candidate) => candidate.distance < best.distance ? candidate : best);
+    return { side: nearest.side, offset: Math.max(0, Math.min(1, nearest.offset)) };
+  }
+
+  function addRelationHandle(relation, key, point, label) {
+    const handle = document.createElementNS(NS, 'circle');
+    handle.setAttribute('cx', point.x);
+    handle.setAttribute('cy', point.y);
+    handle.setAttribute('r', key === 'via' ? '7' : '6');
+    handle.setAttribute('class', `relation-handle${key === 'via' ? ' relation-route-handle' : ''}`);
+    handle.setAttribute('role', 'button');
+    handle.setAttribute('tabindex', '0');
+    handle.setAttribute('aria-label', label);
+    handle.setAttribute('title', label);
+    handle.addEventListener('pointerdown', (event) => startRelationHandleDrag(event, relation, key));
+    handle.addEventListener('click', (event) => event.stopPropagation());
+    relationControls.appendChild(handle);
+  }
+
+  function startRelationHandleDrag(event, relation, key) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectedRelation = relation.id;
+    const previous = {
+      sourceAnchor: relation.sourceAnchor ? { ...relation.sourceAnchor } : undefined,
+      targetAnchor: relation.targetAnchor ? { ...relation.targetAnchor } : undefined,
+      via: relation.via ? { ...relation.via } : undefined,
+    };
+    const rect = canvas.getBoundingClientRect();
+    const pointFromEvent = (pointerEvent) => ({
+      x: Math.max(0, (pointerEvent.clientX - rect.left + canvas.scrollLeft) / state.zoom),
+      y: Math.max(0, (pointerEvent.clientY - rect.top + canvas.scrollTop) / state.zoom),
+    });
+    const move = (pointerEvent) => {
+      if (pointerEvent.pointerId !== event.pointerId) return;
+      const point = pointFromEvent(pointerEvent);
+      if (key === 'via') {
+        const geometry = relationGeometry(relation);
+        if (!geometry) return;
+        const { sourcePoint, targetPoint } = geometry;
+        const midpoint = { x: (sourcePoint.x + targetPoint.x) / 2, y: (sourcePoint.y + targetPoint.y) / 2 };
+        relation.via = { x: Math.round(point.x - midpoint.x), y: Math.round(point.y - midpoint.y) };
+      } else {
+        const tableId = key === 'sourceAnchor' ? relation.sourceTable : relation.targetTable;
+        const table = getTable(state, tableId);
+        if (table) relation[key] = nearestTableAnchor(table, point);
+      }
+      drawLinks();
+    };
+    const finish = (pointerEvent) => {
+      if (pointerEvent && pointerEvent.pointerId !== event.pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', cancel);
+      touch();
+      renderCanvas();
+    };
+    const cancel = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', cancel);
+      for (const property of ['sourceAnchor', 'targetAnchor', 'via']) {
+        if (previous[property]) relation[property] = previous[property];
+        else delete relation[property];
+      }
+      drawLinks();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', cancel);
+  }
+
+  // Notación pata de gallo: dos barras = “uno”, tres puntas = “muchos”.
+  function glyph(x, y, side, kind, active, dimmed) {
+    const normal = SIDE_VECTOR[side];
+    const tangent = { x: -normal.y, y: normal.x };
     const p = document.createElementNS(NS, 'path');
     p.setAttribute('class', `relation-mark${active ? ' active' : ''}${dimmed ? ' dimmed' : ''}`);
     p.setAttribute(
       'd',
       kind === 'many'
-        ? `M ${x + dir * 14} ${y} L ${x} ${y - 7} M ${x + dir * 14} ${y} L ${x} ${y} M ${x + dir * 14} ${y} L ${x} ${y + 7}`
-        : `M ${x + dir * 9} ${y - 6} L ${x + dir * 9} ${y + 6} M ${x + dir * 14} ${y - 6} L ${x + dir * 14} ${y + 6}`
+        ? `M ${x + normal.x * 14} ${y + normal.y * 14} L ${x + tangent.x * 7} ${y + tangent.y * 7} M ${x + normal.x * 14} ${y + normal.y * 14} L ${x} ${y} M ${x + normal.x * 14} ${y + normal.y * 14} L ${x - tangent.x * 7} ${y - tangent.y * 7}`
+        : `M ${x + normal.x * 9 - tangent.x * 6} ${y + normal.y * 9 - tangent.y * 6} L ${x + normal.x * 9 + tangent.x * 6} ${y + normal.y * 9 + tangent.y * 6} M ${x + normal.x * 14 - tangent.x * 6} ${y + normal.y * 14 - tangent.y * 6} L ${x + normal.x * 14 + tangent.x * 6} ${y + normal.y * 14 + tangent.y * 6}`
     );
     links.appendChild(p);
   }
 
   function drawLinks() {
     links.innerHTML = '';
+    relationControls.replaceChildren();
     for (const r of state.relations) {
-      const a = getTable(state, r.sourceTable);
-      const b = getTable(state, r.targetTable);
-      if (!a || !b) continue;
-      const aw = (cardEls.get(a.id) || {}).offsetWidth || 230;
-      const bw = (cardEls.get(b.id) || {}).offsetWidth || 230;
-      const ay = anchorY(a, r.sourceField);
-      const by = anchorY(b, r.targetField);
-      let sx, ex, sd, ed;
-      if (a.x + aw + 30 <= b.x) { sx = a.x + aw; sd = 1; ex = b.x; ed = -1; }
-      else if (b.x + bw + 30 <= a.x) { sx = a.x; sd = -1; ex = b.x + bw; ed = 1; }
-      else { sx = a.x + aw; sd = 1; ex = b.x + bw; ed = 1; } // misma zona: sale por la derecha (incluye autorrelación)
-      const k = sd === ed ? 60 : Math.max(40, Math.abs(ex - sx) / 2);
-      const active = state.selected === a.id || state.selected === b.id;
+      const geometry = relationGeometry(r);
+      if (!geometry) continue;
+      const { sourceTable: a, targetTable: b, sourceAnchor, targetAnchor, sourceDirection, targetDirection, sourcePoint, targetPoint } = geometry;
+      const sx = sourcePoint.x, ex = targetPoint.x;
+      const sd = sourceDirection.x || sourceDirection.y;
+      const ed = targetDirection.x || targetDirection.y;
+      const k = Math.max(40, Math.hypot(ex - sx, targetPoint.y - sourcePoint.y) / 2);
+      const active = selectedRelation === r.id || state.selected === a.id || state.selected === b.id;
       const dimmed = state.selected && !active;
 
       const path = document.createElementNS(NS, 'path');
-      path.setAttribute('d', `M ${sx} ${ay} C ${sx + sd * k} ${ay}, ${ex + ed * k} ${by}, ${ex} ${by}`);
+      const midpoint = { x: (sx + ex) / 2, y: (sourcePoint.y + targetPoint.y) / 2 };
+      const curve = r.via
+        ? `M ${sx} ${sourcePoint.y} Q ${midpoint.x + r.via.x * 2} ${midpoint.y + r.via.y * 2} ${ex} ${targetPoint.y}`
+        : `M ${sx} ${sourcePoint.y} C ${sx + sourceDirection.x * k} ${sourcePoint.y + sourceDirection.y * k}, ${ex + targetDirection.x * k} ${targetPoint.y + targetDirection.y * k}, ${ex} ${targetPoint.y}`;
+      path.setAttribute('d', curve);
       path.setAttribute('class', `relation-line${active ? ' active' : ''}${dimmed ? ' dimmed' : ''}`);
+      path.dataset.relationId = r.id;
+      path.addEventListener('click', (event) => {
+        event.stopPropagation();
+        selectedRelation = r.id;
+        drawLinks();
+      });
       const tip = document.createElementNS(NS, 'title');
       tip.textContent = `${r.group ? 'N:M (vía puente)' : r.type} · ON DELETE ${r.onDelete} · ON UPDATE ${r.onUpdate}`;
       path.appendChild(tip);
       links.appendChild(path);
 
-      glyph(sx, ay, sd, 'one', active, dimmed);
-      glyph(ex, by, ed, r.type === '1:1' ? 'one' : 'many', active, dimmed);
+      glyph(sx, sourcePoint.y, sourceAnchor.side, 'one', active, dimmed);
+      glyph(ex, targetPoint.y, targetAnchor.side, r.type === '1:1' ? 'one' : 'many', active, dimmed);
 
       const label = document.createElementNS(NS, 'text');
-      label.setAttribute('x', (sx + ex) / 2 + (sd === ed ? sd * 40 : 0));
-      label.setAttribute('y', (ay + by) / 2 - 6);
+      label.setAttribute('x', r.via ? midpoint.x + r.via.x : (sx + ex) / 2 + (sd === ed ? sd * 40 : 0));
+      label.setAttribute('y', (sourcePoint.y + targetPoint.y) / 2 + (r.via ? r.via.y : 0) - 6);
       label.setAttribute('class', `relation-label${active ? ' active' : ''}${dimmed ? ' dimmed' : ''}`);
       label.setAttribute('text-anchor', 'middle');
       label.textContent = r.type === '1:1' ? '1 : 1' : '1 : N';
       links.appendChild(label);
+
+      if (selectedRelation === r.id) {
+        addRelationHandle(r, 'sourceAnchor', sourcePoint, 'Mover extremo de origen');
+        addRelationHandle(r, 'targetAnchor', targetPoint, 'Mover extremo de destino');
+        addRelationHandle(r, 'via', r.via
+          ? { x: midpoint.x + r.via.x, y: midpoint.y + r.via.y }
+          : { x: midpoint.x + (sd === ed ? sd * 40 : 0), y: midpoint.y }, 'Mover recorrido de la relación');
+      }
     }
   }
 
@@ -523,6 +691,8 @@
     layer.style.transform = `scale(${state.zoom})`;
     links.style.transform = `scale(${state.zoom})`;
     links.style.transformOrigin = 'top left';
+    relationControls.style.transform = `scale(${state.zoom})`;
+    relationControls.style.transformOrigin = 'top left';
     $('#zoomLabel').textContent = Math.round(state.zoom * 100) + '%';
   }
 
@@ -1138,7 +1308,7 @@
   }
 
   function renderOutput() {
-    const issues = validateModel(state);
+    const issues = validateModel(state, dialect());
     $('[data-tab="summary"]').textContent = '☷ Resumen' + (issues.length ? ` (${issues.length} ⚠)` : '');
     const sqlEditor = $('#sqlEditor');
     const output = $('#output');
@@ -1194,13 +1364,14 @@
     $('#modeHint').textContent =
       mode === 'relation'
         ? 'Haz clic en la tabla origen y luego en la destino (la misma tabla para una autorrelación). Esc para salir.'
-        : 'Arrastra las tablas para organizarlas. Espacio + arrastre desplaza el lienzo; clic derecho abre acciones.';
+        : 'Arrastra las tablas para organizarlas. Haz clic en una relación para ajustar sus extremos y recorrido. Espacio + arrastre desplaza el lienzo.';
     renderCanvas();
   }
 
   function applyModel(m, status) {
     state.tables = m.tables;
     state.relations = m.relations;
+    selectedRelation = null;
     state.sqlDraft = null;
     state.sqlDraftDirty = false;
     state.selected = m.tables[0] ? m.tables[0].id : null;
@@ -1272,7 +1443,7 @@
     modal.querySelector('#analyzeSql').addEventListener('click', () => {
       try {
         parsed = window.DBDSQLImport.parseSQL(text.value, makeId);
-        parsed.warnings.push(...validateModel(parsed));
+        parsed.warnings.push(...validateModel(parsed, dialect()));
         apply.disabled = false;
         report.textContent = `Se encontraron ${parsed.tables.length} tabla(s) y ${parsed.relations.length} relación(es).` +
           (parsed.warnings.length ? `\n\nAdvertencias (${parsed.warnings.length}):\n• ${parsed.warnings.join('\n• ')}` : '\nSin advertencias.');
@@ -1433,6 +1604,7 @@
       if (choice === 'save') downloadPendingChanges();
     }
     state.tables = []; state.relations = []; state.selected = null; state.dirty = false;
+    selectedRelation = null;
     state.sqlDraft = null;
     state.sqlDraftDirty = false;
     state.hasSavedCopy = false;
@@ -1521,22 +1693,49 @@
       const sm = metrics.get(source.id), tm = metrics.get(target.id);
       const sourceRow = sm.card && [...sm.card.querySelectorAll('.column-row')].find((row) => row.dataset.fieldId === relation.sourceField);
       const targetRow = tm.card && [...tm.card.querySelectorAll('.column-row')].find((row) => row.dataset.fieldId === relation.targetField);
-      const sy = source.y + margin + (sourceRow ? sourceRow.offsetTop + sourceRow.offsetHeight / 2 : 54);
-      const ty = target.y + margin + (targetRow ? targetRow.offsetTop + targetRow.offsetHeight / 2 : 54);
+      const sourceDefaultY = source.y + margin + (sourceRow ? sourceRow.offsetTop + sourceRow.offsetHeight / 2 : 54);
+      const targetDefaultY = target.y + margin + (targetRow ? targetRow.offsetTop + targetRow.offsetHeight / 2 : 54);
       let sx, ex, sd, ed;
       if (source.x + sm.width + 30 <= target.x) { sx = source.x + margin + sm.width; sd = 1; ex = target.x + margin; ed = -1; }
       else if (target.x + tm.width + 30 <= source.x) { sx = source.x + margin; sd = -1; ex = target.x + margin + tm.width; ed = 1; }
       else { sx = source.x + margin + sm.width; sd = 1; ex = target.x + margin + tm.width; ed = 1; }
-      const curve = sd === ed ? 60 : Math.max(40, Math.abs(ex - sx) / 2);
-      out.push(`<path d="M ${sx} ${sy} C ${sx + sd * curve} ${sy}, ${ex + ed * curve} ${ty}, ${ex} ${ty}" fill="none" stroke="#537ca8" stroke-width="2.2"/>`);
-      for (const [x, y, direction, many] of [[sx, sy, sd, false], [ex, ty, ed, relation.type !== '1:1']]) {
+      const sourceAnchor = relation.sourceAnchor || {
+        side: sd === 1 ? 'right' : 'left',
+        offset: Math.max(0, Math.min(1, (sourceDefaultY - source.y - margin) / sm.height)),
+      };
+      const targetAnchor = relation.targetAnchor || {
+        side: ed === 1 ? 'right' : 'left',
+        offset: Math.max(0, Math.min(1, (targetDefaultY - target.y - margin) / tm.height)),
+      };
+      const point = (table, metrics, anchor, fallback) => {
+        if (!anchor) return fallback;
+        if (anchor.side === 'top') return { x: table.x + margin + metrics.width * anchor.offset, y: table.y + margin };
+        if (anchor.side === 'right') return { x: table.x + margin + metrics.width, y: table.y + margin + metrics.height * anchor.offset };
+        if (anchor.side === 'bottom') return { x: table.x + margin + metrics.width * anchor.offset, y: table.y + margin + metrics.height };
+        return { x: table.x + margin, y: table.y + margin + metrics.height * anchor.offset };
+      };
+      const sourcePoint = relation.sourceAnchor ? point(source, sm, sourceAnchor) : { x: sx, y: sourceDefaultY };
+      const targetPoint = relation.targetAnchor ? point(target, tm, targetAnchor) : { x: ex, y: targetDefaultY };
+      sx = sourcePoint.x; ex = targetPoint.x;
+      const sy = sourcePoint.y, ty = targetPoint.y;
+      const sourceDirection = SIDE_VECTOR[sourceAnchor.side];
+      const targetDirection = SIDE_VECTOR[targetAnchor.side];
+      const curve = Math.max(40, Math.hypot(ex - sx, ty - sy) / 2);
+      const midpoint = { x: (sx + ex) / 2, y: (sy + ty) / 2 };
+      const path = relation.via
+        ? `M ${sx} ${sy} Q ${midpoint.x + relation.via.x * 2} ${midpoint.y + relation.via.y * 2} ${ex} ${ty}`
+        : `M ${sx} ${sy} C ${sx + sourceDirection.x * curve} ${sy + sourceDirection.y * curve}, ${ex + targetDirection.x * curve} ${ty + targetDirection.y * curve}, ${ex} ${ty}`;
+      out.push(`<path d="${path}" fill="none" stroke="#537ca8" stroke-width="2.2"/>`);
+      for (const [x, y, side, many] of [[sx, sy, sourceAnchor.side, false], [ex, ty, targetAnchor.side, relation.type !== '1:1']]) {
+        const normal = SIDE_VECTOR[side];
+        const tangent = { x: -normal.y, y: normal.x };
         if (many) {
-          out.push(`<path d="M ${x + direction * 14} ${y} L ${x} ${y - 7} M ${x + direction * 14} ${y} L ${x} ${y} M ${x + direction * 14} ${y} L ${x} ${y + 7}" fill="none" stroke="#537ca8" stroke-width="2"/>`);
+          out.push(`<path d="M ${x + normal.x * 14} ${y + normal.y * 14} L ${x + tangent.x * 7} ${y + tangent.y * 7} M ${x + normal.x * 14} ${y + normal.y * 14} L ${x} ${y} M ${x + normal.x * 14} ${y + normal.y * 14} L ${x - tangent.x * 7} ${y - tangent.y * 7}" fill="none" stroke="#537ca8" stroke-width="2"/>`);
         } else {
-          out.push(`<path d="M ${x + direction * 9} ${y - 6} L ${x + direction * 9} ${y + 6} M ${x + direction * 14} ${y - 6} L ${x + direction * 14} ${y + 6}" fill="none" stroke="#537ca8" stroke-width="2"/>`);
+          out.push(`<path d="M ${x + normal.x * 9 - tangent.x * 6} ${y + normal.y * 9 - tangent.y * 6} L ${x + normal.x * 9 + tangent.x * 6} ${y + normal.y * 9 + tangent.y * 6} M ${x + normal.x * 14 - tangent.x * 6} ${y + normal.y * 14 - tangent.y * 6} L ${x + normal.x * 14 + tangent.x * 6} ${y + normal.y * 14 + tangent.y * 6}" fill="none" stroke="#537ca8" stroke-width="2"/>`);
         }
       }
-      out.push(`<text x="${(sx + ex) / 2 + (sd === ed ? sd * 40 : 0)}" y="${(sy + ty) / 2 - 6}" fill="#315477" font-family="sans-serif" font-size="11" font-weight="700" text-anchor="middle">${relation.type === '1:1' ? '1 : 1' : '1 : N'}</text>`);
+      out.push(`<text x="${relation.via ? midpoint.x + relation.via.x : (sx + ex) / 2 + (sd === ed ? sd * 40 : 0)}" y="${(sy + ty) / 2 + (relation.via ? relation.via.y : 0) - 6}" fill="#315477" font-family="sans-serif" font-size="11" font-weight="700" text-anchor="middle">${relation.type === '1:1' ? '1 : 1' : '1 : N'}</text>`);
     }
 
     state.tables.forEach((table, index) => {
@@ -1765,7 +1964,7 @@
     toast('JSON descargado');
   };
   $('#exportBtn').onclick = () => {
-    const issues = validateModel(state);
+    const issues = validateModel(state, dialect());
     const fileName = `schema-${dialect()}.sql`;
     download(fileName, generateSQL(state, dialect()), 'text/sql');
     toast(issues.length ? `SQL exportado con ${issues.length} advertencia(s): revisa la pestaña Resumen` : 'SQL exportado');
@@ -1887,6 +2086,7 @@
     if (e.target !== canvas && e.target !== layer) return;
     canvas.focus({ preventScroll: true });
     if (state.relationSource) { state.relationSource = null; renderCanvas(); return; }
+    if (selectedRelation) { selectedRelation = null; drawLinks(); }
     if (state.selected) select(null);
   });
   canvas.addEventListener('contextmenu', (event) => {

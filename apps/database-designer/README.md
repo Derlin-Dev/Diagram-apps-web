@@ -35,11 +35,16 @@ Comparte la paleta y los tokens tipográficos de `../../shared/visual-theme.css`
   - Solo se puede referenciar un campo que sea PK o UNIQUE, y el tipo de la FK sigue al del campo referenciado.
 - Notación pata de gallo en las líneas: dos barras = “uno”, tres puntas = “muchos”.
 - Las relaciones se dibujan detrás de las tarjetas; al seleccionar una tabla, sus conexiones se resaltan y las demás se atenúan.
+- Seleccionar una relación en el lienzo muestra controles para mover los extremos por los bordes de las tablas y ajustar el recorrido. La posición se conserva en el JSON, autoguardado, historial y exportación SVG.
+- Volver al portal desde el botón visible **← Inicio** en la barra superior.
 - Generar SQL para MySQL, PostgreSQL o SQLite:
   - Las tablas se ordenan según sus dependencias; en caso de ciclos, las FK se emiten con `ALTER TABLE`.
   - Claves primarias compuestas, `AUTO_INCREMENT` / `GENERATED … AS IDENTITY` / `AUTOINCREMENT` según el motor.
-  - `UUID` en MySQL se convierte en `CHAR(36)`; SQLite recibe `PRAGMA foreign_keys = ON;`.
-- Los valores por defecto admiten literales de texto, números, booleanos y `CURRENT_TIMESTAMP` en campos de fecha/hora. El texto se escapa como literal SQL; no se ejecuta como una expresión arbitraria.
+  - Las tablas MySQL declaran `ENGINE=InnoDB` para habilitar claves foráneas independientemente del motor predeterminado del servidor.
+  - Los identificadores se escapan según el dialecto; los nombres de constraints FK se limitan a 63 caracteres para evitar límites de PostgreSQL/MySQL.
+  - `UUID` es nativo en PostgreSQL, se convierte en `CHAR(36)` en MySQL y en `TEXT` en SQLite; SQLite recibe `PRAGMA foreign_keys = ON;` y las PK llevan `NOT NULL` explícito.
+  - SQLite usa afinidad dinámica: `DECIMAL(10,2)` se representa como `NUMERIC`, sin garantía de precisión/escala impuesta por el motor.
+- Los valores por defecto admiten literales de texto, números y booleanos; `CURRENT_TIMESTAMP` solo se admite en campos `DATETIME` para mantener compatibilidad entre motores. El texto se escapa como literal SQL; no se ejecuta como una expresión arbitraria.
 - Exportar documentación Markdown con tablas, campos, restricciones, descripciones y relaciones desde **Documentación**.
 - Pestaña **Resumen** con advertencias (nombres duplicados, tablas sin PK, FK a campos no únicos, tipos distintos…).
 - Deshacer / rehacer (`Ctrl+Z` / `Ctrl+Y`) y autoguardado del modelo en el navegador; la interfaz confirma el guardado y avisa si el almacenamiento falla. Los borradores SQL aún no aplicados se advierten al salir.
@@ -95,4 +100,4 @@ coincide con el campo `junction` de la tabla puente. Los archivos de la versión
 ## Notas
 - Es un prototipo frontend: los datos del modelo viven en el navegador mediante autoguardado local; exporta el JSON para conservar una copia independiente o compartirla.
 - La generación de SQL es una base de trabajo; valida tipos, restricciones y sintaxis según tu versión del motor
-  antes de ejecutar en producción. Por ejemplo, MySQL no permite `TEXT` en `UNIQUE` sin longitud de prefijo.
+  antes de ejecutar en producción. El resumen advierte cuando MySQL no permite `TEXT` en `PRIMARY KEY` o `UNIQUE` sin longitud de prefijo, y cuando el autoincremento no tiene una PK entera simple. El comportamiento de los tipos y valores predeterminados depende del motor.

@@ -37,9 +37,58 @@ test('normaliza un diagrama ArqSketch y remapea ids de conexiones', () => {
     ['cmp-001', 'Web'],
     ['cmp-002', 'API'],
   ]);
-  assert.deepEqual(diagram.edges, [{ id: 'con-003', from: 'cmp-001', to: 'cmp-002', label: 'HTTPS' }]);
+  assert.deepEqual(diagram.edges, [{
+    id: 'con-003',
+    from: 'cmp-001',
+    to: 'cmp-002',
+    label: 'HTTPS',
+    direction: 'forward',
+    style: 'solid',
+    connectionType: 'general',
+  }]);
   assert.equal(diagram.nodes[0].x, 10);
   assert.equal(diagram.nextId, 4);
+});
+
+test('conserva el sentido, estilo y tipo de comunicación de las conexiones', () => {
+  const data = validDiagram();
+  Object.assign(data.edges[0], {
+    direction: 'both',
+    style: 'dotted',
+    connectionType: 'events',
+  });
+
+  const edge = normalizeDiagram(data).edges[0];
+  assert.equal(edge.direction, 'both');
+  assert.equal(edge.style, 'dotted');
+  assert.equal(edge.connectionType, 'events');
+
+  data.edges[0].direction = 'sideways';
+  assert.throws(() => normalizeDiagram(data), /sentido de la conexión.*no es válido/);
+  data.edges[0].direction = 'both';
+  data.edges[0].style = 'wavy';
+  assert.throws(() => normalizeDiagram(data), /estilo de la conexión.*no es válido/);
+  data.edges[0].style = 'dotted';
+  data.edges[0].connectionType = 'unknown';
+  assert.throws(() => normalizeDiagram(data), /tipo de comunicación.*no es válido/);
+});
+
+test('conserva el punto de control desplazable de una conexión y valida sus coordenadas', () => {
+  const data = validDiagram();
+  data.edges[0].via = { x: 48, y: -32 };
+  data.edges[0].fromAnchor = { side: 'right', offset: 0.7 };
+  data.edges[0].toAnchor = { side: 'left', offset: 0.3 };
+  const diagram = normalizeDiagram(data);
+  assert.deepEqual(diagram.edges[0].via, { x: 48, y: -32 });
+  assert.deepEqual(diagram.edges[0].fromAnchor, { side: 'right', offset: 0.7 });
+  assert.deepEqual(diagram.edges[0].toAnchor, { side: 'left', offset: 0.3 });
+
+  data.edges[0].via.x = Infinity;
+  assert.throws(() => normalizeDiagram(data), /punto de control.*no es válido/);
+
+  data.edges[0].via.x = 48;
+  data.edges[0].fromAnchor.offset = 1.1;
+  assert.throws(() => normalizeDiagram(data), /punto de conexión.*no es válido/);
 });
 
 test('conserva detalles específicos y endpoints al importar un diagrama', () => {
@@ -177,6 +226,101 @@ test('rechaza posiciones no finitas y nombres vacíos', () => {
   const invalidName = validDiagram();
   invalidName.nodes[0].name = '   ';
   assert.throws(() => normalizeDiagram(invalidName), /nombre del componente/);
+});
+
+test('admite coordenadas negativas para componentes y valida los límites absolutos', () => {
+  const diagram = validDiagram();
+  diagram.nodes[0].x = -240;
+  diagram.nodes[0].y = -80;
+  const normalized = normalizeDiagram(diagram);
+  assert.equal(normalized.nodes[0].x, -240);
+  assert.equal(normalized.nodes[0].y, -80);
+
+  diagram.nodes[0].x = -100001;
+  assert.throws(() => normalizeDiagram(diagram), /posición X/);
+});
+
+test('normaliza figuras de agrupación junto con el diagrama', () => {
+  const diagram = validDiagram();
+  diagram.shapes = [{
+    id: 'group-original',
+    type: 'ellipse',
+    title: 'Servicios',
+    color: '#65bfff',
+    x: -120,
+    y: 40,
+    width: 420,
+    height: 290,
+  }, {
+    id: 'group-database',
+    type: 'rectangle',
+    title: 'Datos',
+    color: '#4fd7b7',
+    x: 360,
+    y: 40,
+    width: 320,
+    height: 240,
+  }];
+  diagram.edges.push({
+    id: 'edge-groups',
+    from: 'group-original',
+    to: 'group-database',
+    label: 'comunicación interna',
+  }, {
+    id: 'edge-mixed',
+    from: 'group-original',
+    to: diagram.nodes[0].id,
+    label: 'contiene',
+  });
+
+  const normalized = normalizeDiagram(diagram);
+  assert.deepEqual(normalized.shapes, [{
+    id: 'grp-003',
+    type: 'ellipse',
+    title: 'Servicios',
+    color: '#65bfff',
+    x: -120,
+    y: 40,
+    width: 420,
+    height: 290,
+  }, {
+    id: 'grp-004',
+    type: 'rectangle',
+    title: 'Datos',
+    color: '#4fd7b7',
+    x: 360,
+    y: 40,
+    width: 320,
+    height: 240,
+  }]);
+  assert.deepEqual(normalized.edges[1], {
+    id: 'con-006',
+    from: 'grp-003',
+    to: 'grp-004',
+    label: 'comunicación interna',
+    direction: 'forward',
+    style: 'solid',
+    connectionType: 'general',
+  });
+  assert.deepEqual(normalized.edges[2], {
+    id: 'con-007',
+    from: 'grp-003',
+    to: 'cmp-001',
+    label: 'contiene',
+    direction: 'forward',
+    style: 'solid',
+    connectionType: 'general',
+  });
+  assert.equal(normalized.nextId, 8);
+
+  diagram.shapes[0].color = 'red';
+  assert.throws(() => normalizeDiagram(diagram), /propiedades de la figura/);
+  diagram.shapes[0].color = '#65bfff';
+  diagram.shapes[0].width = 139;
+  assert.throws(() => normalizeDiagram(diagram), /tamaño de la figura/);
+  diagram.shapes[0].width = 420;
+  diagram.edges[1].to = 'missing-group';
+  assert.throws(() => normalizeDiagram(diagram), /componente inexistente/);
 });
 
 test('permite normalizar el estado local sin cabecera de exportación', () => {

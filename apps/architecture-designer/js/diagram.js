@@ -8,6 +8,7 @@
   const TYPES = ['frontend', 'backend', 'database', 'service', 'cloud', 'user'];
   const MAX_NODES = 300;
   const MAX_EDGES = 1000;
+  const MAX_SHAPES = 300;
   const MAX_COORDINATE = 100000;
   const MIN_NODE_WIDTH = 190;
   const MAX_NODE_WIDTH = 640;
@@ -22,6 +23,9 @@
   const AUTH_METHODS = ['', 'JWT / Bearer token', 'Cookie de sesión', 'OAuth 2.0', 'API key', 'Usuario y contraseña', 'mTLS', 'Otro'];
   const ACCESS_LEVELS = ['', 'Público', 'Privado'];
   const ENVIRONMENTS = ['', 'Desarrollo', 'Pruebas', 'Producción'];
+  const EDGE_DIRECTIONS = ['forward', 'reverse', 'both', 'none'];
+  const EDGE_STYLES = ['solid', 'dashed', 'dotted'];
+  const EDGE_TYPES = ['general', 'api', 'data', 'events', 'auth', 'files', 'monitoring', 'dependency', 'other'];
   const DETAIL_FIELDS = {
     frontend: [
       { key: 'platform', label: 'Plataforma', type: 'select', options: ['', 'Web', 'Móvil', 'Escritorio', 'Web y móvil'] },
@@ -270,7 +274,7 @@
       }
       for (const coordinate of ['x', 'y']) {
         if (typeof node[coordinate] !== 'number' || !Number.isFinite(node[coordinate]) ||
-            node[coordinate] < 0 || node[coordinate] > MAX_COORDINATE) {
+            Math.abs(node[coordinate]) > MAX_COORDINATE) {
           throw new Error(`La posición ${coordinate.toUpperCase()} de "${node.name}" no es válida`);
         }
       }
@@ -303,6 +307,49 @@
       };
     });
 
+    if (data.shapes !== undefined && (!Array.isArray(data.shapes) || data.shapes.length > MAX_SHAPES)) {
+      throw new Error(`La lista de figuras no es válida (máximo ${MAX_SHAPES})`);
+    }
+    const entityIds = new Map(nodeIds);
+    const seenShapeIds = new Set();
+    const shapes = (data.shapes || []).map((shape, index) => {
+      if (!shape || typeof shape !== 'object' || Array.isArray(shape) ||
+          typeof shape.id !== 'string' || !shape.id.trim() || shape.id.length > 100 ||
+          seenShapeIds.has(shape.id) || entityIds.has(shape.id)) {
+        throw new Error(`La figura ${index + 1} no es válida`);
+      }
+      if (!['rectangle', 'ellipse'].includes(shape.type) ||
+          typeof shape.title !== 'string' || shape.title.length > 80 ||
+          typeof shape.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(shape.color)) {
+        throw new Error(`Las propiedades de la figura ${index + 1} no son válidas`);
+      }
+      for (const coordinate of ['x', 'y']) {
+        if (typeof shape[coordinate] !== 'number' || !Number.isFinite(shape[coordinate]) ||
+            Math.abs(shape[coordinate]) > MAX_COORDINATE) {
+          throw new Error(`La posición ${coordinate.toUpperCase()} de la figura ${index + 1} no es válida`);
+        }
+      }
+      for (const [dimension, min, max] of [['width', 140, 2000], ['height', 100, 1600]]) {
+        if (typeof shape[dimension] !== 'number' || !Number.isFinite(shape[dimension]) ||
+            shape[dimension] < min || shape[dimension] > max) {
+          throw new Error(`El tamaño de la figura ${index + 1} no es válido`);
+        }
+      }
+      seenShapeIds.add(shape.id);
+      const safeId = nextId('grp');
+      entityIds.set(shape.id, safeId);
+      return {
+        id: safeId,
+        type: shape.type,
+        title: shape.title,
+        color: shape.color,
+        x: requireMetadata ? Math.round(shape.x) : shape.x,
+        y: requireMetadata ? Math.round(shape.y) : shape.y,
+        width: Math.round(shape.width),
+        height: Math.round(shape.height),
+      };
+    });
+
     const seenEdgeIds = new Set();
     const seenPairs = new Set();
     const edges = data.edges.map((edge, index) => {
@@ -313,7 +360,7 @@
         throw new Error(`El identificador de la conexión ${index + 1} falta, es duplicado o no es válido`);
       }
       if (typeof edge.from !== 'string' || typeof edge.to !== 'string' ||
-          !nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+          !entityIds.has(edge.from) || !entityIds.has(edge.to)) {
         throw new Error(`La conexión ${index + 1} apunta a un componente inexistente`);
       }
       if (edge.from === edge.to) throw new Error(`La conexión ${index + 1} no puede apuntar al mismo componente`);
@@ -323,22 +370,61 @@
           (typeof edge.label !== 'string' || edge.label.length > 120)) {
         throw new Error(`La etiqueta de la conexión ${index + 1} supera el límite de 120 caracteres`);
       }
+      const direction = edge.direction === undefined ? 'forward' : edge.direction;
+      const style = edge.style === undefined ? 'solid' : edge.style;
+      const connectionType = edge.connectionType === undefined ? 'general' : edge.connectionType;
+      if (!EDGE_DIRECTIONS.includes(direction)) {
+        throw new Error(`El sentido de la conexión ${index + 1} no es válido`);
+      }
+      if (!EDGE_STYLES.includes(style)) {
+        throw new Error(`El estilo de la conexión ${index + 1} no es válido`);
+      }
+      if (!EDGE_TYPES.includes(connectionType)) {
+        throw new Error(`El tipo de comunicación de la conexión ${index + 1} no es válido`);
+      }
+      let via;
+      if (edge.via !== undefined) {
+        if (!edge.via || typeof edge.via !== 'object' || Array.isArray(edge.via) ||
+            !Number.isFinite(edge.via.x) || !Number.isFinite(edge.via.y) ||
+            Math.abs(edge.via.x) > MAX_COORDINATE || Math.abs(edge.via.y) > MAX_COORDINATE) {
+          throw new Error(`El punto de control de la conexión ${index + 1} no es válido`);
+        }
+        via = { x: edge.via.x, y: edge.via.y };
+      }
+      const anchors = {};
+      for (const [key, anchor] of [['fromAnchor', edge.fromAnchor], ['toAnchor', edge.toAnchor]]) {
+        if (anchor === undefined) continue;
+        if (!anchor || typeof anchor !== 'object' || Array.isArray(anchor) ||
+            !['top', 'right', 'bottom', 'left'].includes(anchor.side) ||
+            !Number.isFinite(anchor.offset) || anchor.offset < 0 || anchor.offset > 1) {
+          throw new Error(`El punto de conexión ${index + 1} no es válido`);
+        }
+        anchors[key] = { side: anchor.side, offset: anchor.offset };
+      }
       seenEdgeIds.add(edge.id);
       seenPairs.add(pair);
       return {
         id: nextId('con'),
-        from: nodeIds.get(edge.from),
-        to: nodeIds.get(edge.to),
+        from: entityIds.get(edge.from),
+        to: entityIds.get(edge.to),
         label: edge.label || '',
+        direction,
+        style,
+        connectionType,
+        ...(via ? { via } : {}),
+        ...anchors,
       };
     });
 
-    return { nodes, edges, nextId: id };
+    return { nodes, edges, shapes, nextId: id };
   }
 
   return {
     AUTH_METHODS,
     DETAIL_FIELDS,
+    EDGE_DIRECTIONS,
+    EDGE_STYLES,
+    EDGE_TYPES,
     ENDPOINT_ACCESS,
     HTTP_METHODS,
     ICONS,

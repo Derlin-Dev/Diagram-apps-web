@@ -9,8 +9,9 @@
 </head>
 <body class="database-app">
   <header class="topbar">
-    <div class="brand"><span class="brand-icon">▤</span><div><strong>DB Designer</strong><small>Diseña tu base de datos relacional</small><a class="home-link" href="../../index.html">← Volver al inicio</a></div></div>
+    <div class="brand"><span class="brand-icon">▤</span><div><strong>DB Designer</strong><small>Diseña tu base de datos relacional</small></div></div>
     <div class="top-actions">
+      <a class="home-link" href="../../index.html">← Inicio</a>
       <button class="btn" id="newBtn">＋ Nuevo</button>
       <button class="btn" id="openBtn">↥ Abrir JSON</button>
       <button class="btn" id="importSqlBtn">⇧ Importar SQL</button>
@@ -33,7 +34,7 @@
       <button class="tool" id="addTableBtn"><span>▦</span> Tabla nueva</button>
       <button class="tool" id="relationModeBtn"><span>↔</span> Crear relación</button>
       <button class="tool" id="templatesBtn"><span>▤</span> Plantillas</button>
-      <p class="hint" id="modeHint">Arrastra las tablas para organizarlas. Espacio + arrastre desplaza el lienzo; clic derecho abre acciones.</p>
+      <p class="hint" id="modeHint">Arrastra las tablas para organizarlas. Haz clic en una relación para ajustar sus extremos y recorrido. Espacio + arrastre desplaza el lienzo.</p>
       <div class="side-divider"></div>
       <h2>Tipos de relación</h2>
       <div class="type-chip"><b>1 : 1</b><span>Uno a uno</span></div>
@@ -98,6 +99,7 @@
           <div id="canvas" class="canvas" tabindex="0" aria-label="Lienzo del diagrama; espacio y arrastrar para desplazar">
             <svg id="links" class="links" aria-hidden="true"></svg>
             <div id="tablesLayer"></div>
+            <svg id="relationControls" class="relation-controls" aria-label="Controles de relación"></svg>
             <div class="canvas-empty" id="emptyState"><div class="empty-symbol">▦</div><h2>Tu modelo empieza aquí</h2><p>Crea una tabla o carga el ejemplo para explorar el diseñador.</p><button class="btn primary" id="sampleBtn">Cargar ejemplo</button></div>
           </div>
         </section>

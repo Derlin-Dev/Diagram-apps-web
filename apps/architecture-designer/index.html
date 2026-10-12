@@ -39,8 +39,12 @@
         <button class="component" draggable="true" data-type="user"><span class="component-icon user">♙</span><span><b>Usuario</b><small>Actor del sistema</small></span><span class="plus">+</span></button>
       </div>
       <div class="sidebar-section">
+        <p class="eyebrow">AGRUPACIÓN</p>
+        <button class="tool-row" id="addShapeBtn" type="button"><span class="tool-icon">▱</span><span><b>Agregar grupo</b><small>Marco movible y redimensionable</small></span><kbd>+</kbd></button>
+      </div>
+      <div class="sidebar-section">
         <p class="eyebrow">CONECTORES</p>
-        <button class="tool-row" id="connectModeBtn"><span class="tool-icon">↗</span><span><b>Conectar componentes</b><small>Selecciona origen y destino</small></span><kbd>C</kbd></button>
+        <button class="tool-row" id="connectModeBtn"><span class="tool-icon">↗</span><span><b>Conectar elementos</b><small>Componentes y grupos</small></span><kbd>C</kbd></button>
         <button class="tool-row" id="deleteBtn"><span class="tool-icon danger">⌫</span><span><b>Eliminar selección</b><small>Quitar nodo o conexión</small></span><kbd>Del</kbd></button>
       </div>
       <div class="sidebar-tip"><span class="tip-icon">✦</span><div><b>Consejo</b><p>Ctrl/Cmd+clic o Mayús+arrastrar selecciona varios. Ctrl/Cmd+C/V/D copia, pega o duplica; clic derecho abre acciones.</p></div></div>
@@ -67,16 +71,17 @@
           </div>
         </div>
         <div class="canvas-wrap" id="canvasWrap">
-          <svg id="connectionsSvg" class="connections-svg" aria-label="Conexiones entre componentes"></svg>
           <div id="canvas" class="canvas" tabindex="0" aria-label="Lienzo del diagrama">
+            <svg id="connectionsSvg" class="connections-svg" aria-label="Conexiones entre componentes"></svg>
             <div class="empty-state" id="emptyState">
               <div class="empty-art"><span class="art-node n1"></span><span class="art-node n2"></span><span class="art-node n3"></span><span class="art-line l1"></span><span class="art-line l2"></span></div>
               <h3>Tu arquitectura empieza aquí</h3>
               <p>Añade componentes desde la biblioteca o usa una plantilla para comenzar.</p>
               <button class="btn btn-primary" id="starterTemplateBtn">Cargar ejemplo de arquitectura</button>
             </div>
+            <svg id="connectionControlsSvg" class="connection-controls-svg" aria-label="Controles de conexiones"></svg>
           </div>
-          <div class="canvas-status"><span id="modeStatus">Modo: selección</span><span>Arrastra los nodos para organizarlos</span></div>
+          <div class="canvas-status"><span id="modeStatus">Modo: selección</span><span>Arrastra componentes y grupos para organizarlos · C para conectar</span></div>
           <div class="selection-actions" id="selectionActions" aria-label="Acciones para la selección múltiple" hidden>
             <span id="selectionCount"></span>
             <button type="button" data-selection-action="align-left" title="Alinear por el borde izquierdo">Alinear ←</button>
@@ -88,8 +93,15 @@
         </div>
       </section>
       <section class="json-view" id="jsonView" role="tabpanel" aria-labelledby="jsonTab" hidden>
-        <div class="json-toolbar"><span>Representación JSON actual del diagrama</span><button class="btn btn-quiet" id="copyDiagramJsonBtn" type="button">Copiar JSON</button></div>
-        <pre id="diagramJson" class="diagram-json" tabindex="0" aria-label="JSON del diagrama" aria-live="polite"></pre>
+        <div class="json-toolbar">
+          <span id="jsonEditorStatus" role="status">Edita el JSON o pega uno para cargar un diagrama.</span>
+          <div class="json-actions">
+            <button class="btn btn-quiet" id="pasteDiagramJsonBtn" type="button">Pegar JSON</button>
+            <button class="btn btn-quiet" id="copyDiagramJsonBtn" type="button">Copiar JSON</button>
+            <button class="btn btn-primary" id="applyDiagramJsonBtn" type="button">Aplicar JSON</button>
+          </div>
+        </div>
+        <textarea id="diagramJson" class="diagram-json" aria-label="Editar JSON del diagrama" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
       </section>
     </section>
 
@@ -98,49 +110,90 @@
     <aside class="properties" id="propertiesPanel">
       <div class="properties-heading"><div><p class="eyebrow">CONFIGURACIÓN</p><h2>Propiedades</h2></div><span class="settings-symbol">☷</span></div>
       <div id="noSelection" class="no-selection"><div class="select-illustration">⌁</div><b>Ningún elemento seleccionado</b><p>Selecciona un componente o una conexión del lienzo para ver sus propiedades.</p></div>
-      <form id="propertyForm" class="property-form hidden">
-        <details class="property-group" open>
-          <summary>Información general</summary>
-          <div class="property-group-content">
-            <label for="nodeName">Nombre</label><input id="nodeName" maxlength="50" autocomplete="off">
-            <label for="nodeType">Tipo de componente</label><input id="nodeType" disabled>
-            <label for="nodeDescription">Descripción</label><textarea id="nodeDescription" rows="4" maxlength="240" placeholder="¿Qué responsabilidad tiene este componente?"></textarea>
-          </div>
-        </details>
-        <details class="property-group">
-          <summary>Icono y tecnología</summary>
-          <div class="property-group-content">
-            <label for="nodeIconSearch">Buscar icono o tecnología</label>
-            <input id="nodeIconSearch" type="search" maxlength="60" autocomplete="off" placeholder="Ej.: React, PostgreSQL, cola..." aria-label="Buscar icono por nombre o tipo">
-            <div id="selectedIcon" class="selected-icon" aria-live="polite"></div>
-            <div id="iconPicker" class="icon-picker">
-              <section class="icon-results-section">
-                <h4>Iconos integrados</h4>
-                <div id="localIconResults" class="icon-results" role="group" aria-label="Iconos integrados"></div>
-              </section>
-              <section class="icon-results-section">
-                <h4>Iconify</h4>
-                <p id="remoteIconStatus" class="icon-picker-status" aria-live="polite">Escribe al menos dos caracteres para buscar iconos en línea.</p>
-                <div id="remoteIconResults" class="icon-results" role="group" aria-label="Resultados de Iconify"></div>
-              </section>
+      <div class="properties-scroll hidden" id="propertiesScroll">
+        <form id="propertyForm" class="property-form hidden">
+          <details class="property-group" open>
+            <summary>Información general</summary>
+            <div class="property-group-content">
+              <label for="nodeName">Nombre</label><input id="nodeName" maxlength="50" autocomplete="off">
+              <label for="nodeType">Tipo de componente</label><input id="nodeType" disabled>
+              <label for="nodeDescription">Descripción</label><textarea id="nodeDescription" rows="4" maxlength="240" placeholder="¿Qué responsabilidad tiene este componente?"></textarea>
             </div>
-          </div>
-        </details>
-        <details class="property-group">
-          <summary id="componentDetailsSummary">Configuración específica</summary>
-          <div class="property-group-content">
-            <section id="componentDetails" class="component-details" aria-label="Información específica del componente"></section>
-          </div>
-        </details>
-        <div class="property-meta"><span>IDENTIFICADOR</span><code id="nodeId">—</code></div>
-        <button type="button" class="btn btn-danger-outline" id="deleteSelectedBtn">Eliminar componente</button>
-      </form>
-      <form id="edgePropertyForm" class="property-form hidden">
-        <p class="edge-summary" id="edgeSummary"></p>
-        <label for="edgeLabel">Etiqueta o protocolo</label>
-        <input id="edgeLabel" maxlength="120" autocomplete="off" placeholder="Ej.: HTTPS, SQL, eventos">
-        <button type="button" class="btn btn-danger-outline" id="deleteEdgePropertyBtn">Eliminar conexión</button>
-      </form>
+          </details>
+          <details class="property-group">
+            <summary>Icono y tecnología</summary>
+            <div class="property-group-content">
+              <label for="nodeIconSearch">Buscar icono o tecnología</label>
+              <input id="nodeIconSearch" type="search" maxlength="60" autocomplete="off" placeholder="Ej.: React, PostgreSQL, cola..." aria-label="Buscar icono por nombre o tipo">
+              <div id="selectedIcon" class="selected-icon" aria-live="polite"></div>
+              <div id="iconPicker" class="icon-picker">
+                <section class="icon-results-section">
+                  <h4>Iconos integrados</h4>
+                  <div id="localIconResults" class="icon-results" role="group" aria-label="Iconos integrados"></div>
+                </section>
+                <section class="icon-results-section">
+                  <h4>Iconify</h4>
+                  <p id="remoteIconStatus" class="icon-picker-status" aria-live="polite">Escribe al menos dos caracteres para buscar iconos en línea.</p>
+                  <div id="remoteIconResults" class="icon-results" role="group" aria-label="Resultados de Iconify"></div>
+                </section>
+              </div>
+            </div>
+          </details>
+          <details class="property-group">
+            <summary id="componentDetailsSummary">Configuración específica</summary>
+            <div class="property-group-content">
+              <section id="componentDetails" class="component-details" aria-label="Información específica del componente"></section>
+            </div>
+          </details>
+          <div class="property-meta"><span>IDENTIFICADOR</span><code id="nodeId">—</code></div>
+          <button type="button" class="btn btn-danger-outline" id="deleteSelectedBtn">Eliminar componente</button>
+        </form>
+        <form id="edgePropertyForm" class="property-form hidden">
+          <p class="edge-summary" id="edgeSummary"></p>
+          <p class="details-note">Arrastra los puntos de la línea para recolocar sus extremos en las tarjetas o ajustar el recorrido.</p>
+          <label for="edgeDirection">Sentido</label>
+          <select id="edgeDirection">
+            <option value="forward">Hacia el destino (→)</option>
+            <option value="reverse">Hacia el origen (←)</option>
+            <option value="both">Bidireccional (↔)</option>
+            <option value="none">Sin flechas</option>
+          </select>
+          <label for="edgeStyle">Estilo de línea</label>
+          <select id="edgeStyle">
+            <option value="solid">Continua</option>
+            <option value="dashed">Discontinua</option>
+            <option value="dotted">Punteada</option>
+          </select>
+          <label for="edgeConnectionType">Tipo de comunicación</label>
+          <select id="edgeConnectionType">
+            <option value="general">General</option>
+            <option value="api">API / servicio</option>
+            <option value="data">Datos</option>
+            <option value="events">Eventos / mensajería</option>
+            <option value="auth">Autenticación</option>
+            <option value="files">Archivos</option>
+            <option value="monitoring">Monitoreo</option>
+            <option value="dependency">Dependencia</option>
+            <option value="other">Otro</option>
+          </select>
+          <label for="edgeLabel">Etiqueta o protocolo</label>
+          <input id="edgeLabel" maxlength="120" autocomplete="off" placeholder="Ej.: HTTPS, SQL, eventos">
+          <button type="button" class="btn btn-danger-outline" id="deleteEdgePropertyBtn">Eliminar conexión</button>
+        </form>
+        <form id="shapePropertyForm" class="property-form hidden">
+          <details class="property-group" open>
+            <summary>Figura de agrupación</summary>
+            <div class="property-group-content">
+              <label for="shapeTitle">Título</label><input id="shapeTitle" maxlength="80" autocomplete="off">
+              <label for="shapeType">Forma</label>
+              <select id="shapeType"><option value="rectangle">Rectángulo</option><option value="ellipse">Elipse</option></select>
+              <label for="shapeColor">Color</label><input id="shapeColor" type="color" value="#65bfff">
+              <p class="details-note">Coloca el marco detrás de los componentes para agruparlos visualmente. Arrástralo para moverlo y usa su esquina para cambiar el tamaño.</p>
+            </div>
+          </details>
+          <button type="button" class="btn btn-danger-outline" id="deleteShapeBtn">Eliminar grupo</button>
+        </form>
+      </div>
       <div class="properties-bottom"><span class="save-indicator"><i></i> Cambios en el navegador</span><button class="text-btn" id="clearBtn">Limpiar lienzo</button></div>
     </aside>
   </main>

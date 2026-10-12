@@ -2,11 +2,20 @@
   const canvas = document.getElementById('canvas');
   const wrap = document.getElementById('canvasWrap');
   const svg = document.getElementById('connectionsSvg');
+  const connectionControlsSvg = document.getElementById('connectionControlsSvg');
   const emptyState = document.getElementById('emptyState');
   const noSelection = document.getElementById('noSelection');
+  const propertiesScroll = document.getElementById('propertiesScroll');
   const propertyForm = document.getElementById('propertyForm');
   const edgePropertyForm = document.getElementById('edgePropertyForm');
+  const shapePropertyForm = document.getElementById('shapePropertyForm');
+  const shapeTitle = document.getElementById('shapeTitle');
+  const shapeType = document.getElementById('shapeType');
+  const shapeColor = document.getElementById('shapeColor');
   const edgeLabel = document.getElementById('edgeLabel');
+  const edgeDirection = document.getElementById('edgeDirection');
+  const edgeStyle = document.getElementById('edgeStyle');
+  const edgeConnectionType = document.getElementById('edgeConnectionType');
   const edgeSummary = document.getElementById('edgeSummary');
   const nodeName = document.getElementById('nodeName');
   const nodeType = document.getElementById('nodeType');
@@ -30,6 +39,7 @@
   const jsonView = document.getElementById('jsonView');
   const diagramTab = document.getElementById('diagramTab');
   const jsonTab = document.getElementById('jsonTab');
+  const jsonEditorStatus = document.getElementById('jsonEditorStatus');
   const selectionActions = document.getElementById('selectionActions');
   const selectionCount = document.getElementById('selectionCount');
   const selectionMarquee = document.getElementById('selectionMarquee');
@@ -37,6 +47,28 @@
 
   const ICONS = window.ArqSketchDiagram.ICONS;
   const DETAIL_FIELDS = window.ArqSketchDiagram.DETAIL_FIELDS;
+  const EDGE_TYPE_LABELS = {
+    general: 'General',
+    api: 'API / servicio',
+    data: 'Datos',
+    events: 'Eventos / mensajería',
+    auth: 'Autenticación',
+    files: 'Archivos',
+    monitoring: 'Monitoreo',
+    dependency: 'Dependencia',
+    other: 'Otro',
+  };
+  const EDGE_TYPE_COLORS = {
+    general: '#8290b1',
+    api: '#65bfff',
+    data: '#54d6b0',
+    events: '#edb76d',
+    auth: '#ef8fba',
+    files: '#83aaff',
+    monitoring: '#b4a9ff',
+    dependency: '#aab5ca',
+    other: '#c2bcff',
+  };
   const HTTP_METHODS = window.ArqSketchDiagram.HTTP_METHODS;
   const ENDPOINT_ACCESS = window.ArqSketchDiagram.ENDPOINT_ACCESS;
   const NODE_SIZE = window.ArqSketchDiagram.NODE_SIZE;
@@ -55,8 +87,9 @@
   };
   let nodes = [];
   let edges = [];
+  let shapes = [];
   let selected = null;
-  let selectedNodeIds = new Set();
+  let selectedEntityIds = new Set();
   let copiedSelection = null;
   let contextTarget = null;
   let connectMode = false;
@@ -72,6 +105,7 @@
   let historyIndex = -1;
   let historyTimer;
   let historySuspended = false;
+  let jsonDraftDirty = false;
   let backgroundPointerMoved = false;
   let panelWidths = { ...DEFAULT_PANEL_WIDTHS };
   const HISTORY_LIMIT = 100;
@@ -147,8 +181,13 @@
   }
   function makeId(prefix) { return prefix + '-' + String(nextId++).padStart(3, '0'); }
   function getNode(id) { return nodes.find(n => n.id === id); }
+  function getDiagramEntity(id) { return getNode(id) || getShape(id); }
+  function entityTitle(entity) { return entity.name || entity.title || 'Grupo'; }
+  function entityElement(entity) {
+    return entity.name ? document.getElementById(entity.id) : canvas.querySelector(`[data-shape-id="${entity.id}"]`);
+  }
   function nodeCenter(n) {
-    const element = document.getElementById(n.id);
+    const element = entityElement(n);
     return { x: n.x + (element?.offsetWidth || n.width || 228) / 2, y: n.y + (element?.offsetHeight || n.height || 91) / 2 };
   }
   function findAvailablePosition(x, y) {
@@ -160,8 +199,8 @@
         for (let column = -ring; column <= ring; column += 1) {
           if (ring && Math.abs(row) !== ring && Math.abs(column) !== ring) continue;
           const candidate = {
-            x: Math.max(8, x + column * spacingX),
-            y: Math.max(8, y + row * spacingY),
+            x: x + column * spacingX,
+            y: y + row * spacingY,
           };
           const overlaps = nodes.some(node => {
             const element = document.getElementById(node.id);
@@ -174,10 +213,10 @@
         }
       }
     }
-    return { x: Math.max(8, x), y: Math.max(8, y + nodes.length * spacingY) };
+    return { x, y: y + nodes.length * spacingY };
   }
   function currentDiagramState() {
-    return JSON.stringify({ nodes, edges, nextId });
+    return JSON.stringify({ nodes, edges, shapes, nextId });
   }
   function recordHistory() {
     if (historySuspended) return;
@@ -202,10 +241,13 @@
     const data = JSON.parse(state);
     nodes = data.nodes;
     edges = data.edges;
+    shapes = data.shapes || [];
     nextId = data.nextId;
     selected = null;
     connectFrom = null;
     canvas.querySelectorAll('.node').forEach(node => node.remove());
+    canvas.querySelectorAll('.group-shape').forEach(shape => shape.remove());
+    shapes.forEach(renderShape);
     nodes.forEach(renderNode);
     renderEdges();
     updateCounts();
@@ -232,14 +274,18 @@
   function updateCounts() {
     const componentCount = `${nodes.length} componente${nodes.length === 1 ? '' : 's'}`;
     const connectionCount = `${edges.length} ${edges.length === 1 ? 'conexión' : 'conexiones'}`;
-    elementCount.textContent = `${componentCount} · ${connectionCount}`;
-    emptyState.classList.toggle('hidden', nodes.length > 0);
+    const shapeCount = `${shapes.length} grupo${shapes.length === 1 ? '' : 's'}`;
+    elementCount.textContent = `${componentCount} · ${connectionCount}${shapes.length ? ` · ${shapeCount}` : ''}`;
+    emptyState.classList.toggle('hidden', nodes.length > 0 || shapes.length > 0);
   }
   function addNode(type, x, y, opts = {}) {
     const info = TYPES[type] || TYPES.backend;
     const node = { id: opts.id || makeId('cmp'), type, name: opts.name || info.defaultName, description: opts.description ?? info.desc,
       details: opts.details || window.ArqSketchDiagram.createDefaultDetails(type),
-      icon: opts.icon || 'auto', x: Math.max(8, x), y: Math.max(8, y) };
+      icon: opts.icon || 'auto',
+      x: Math.max(-100000, Math.min(100000, x)),
+      y: Math.max(-100000, Math.min(100000, y)),
+    };
     if (opts.width !== undefined) node.width = opts.width;
     if (opts.height !== undefined) node.height = opts.height;
     nodes.push(node);
@@ -247,6 +293,115 @@
     updateCounts();
     selectItem({ kind: 'node', id: node.id });
     return node;
+  }
+  function addShape() {
+    if (shapes.length >= 300) {
+      notify('El diagrama alcanzó el límite de 300 grupos.');
+      return;
+    }
+    const rect = wrap.getBoundingClientRect();
+    const shape = {
+      id: makeId('grp'),
+      type: 'rectangle',
+      title: 'Nuevo grupo',
+      color: '#65bfff',
+      x: Math.max(-100000, Math.min(100000, (rect.width / 2 - panX) / zoom - 210)),
+      y: Math.max(-100000, Math.min(100000, (rect.height / 2 - panY) / zoom - 145)),
+      width: 420,
+      height: 290,
+    };
+    shapes.push(shape);
+    renderShape(shape);
+    updateCounts();
+    selectItem({ kind: 'shape', id: shape.id });
+    recordHistory();
+    saveState();
+  }
+  function getShape(id) { return shapes.find(shape => shape.id === id); }
+  function renderShape(shape) {
+    let element = canvas.querySelector(`[data-shape-id="${shape.id}"]`);
+    if (!element) {
+      element = document.createElement('div');
+      element.className = 'group-shape';
+      element.dataset.shapeId = shape.id;
+      element.tabIndex = 0;
+      element.setAttribute('role', 'group');
+      const title = document.createElement('span');
+      title.className = 'group-shape-title';
+      const resize = document.createElement('button');
+      resize.type = 'button';
+      resize.className = 'group-shape-resize';
+      resize.title = 'Arrastra para cambiar el tamaño del grupo';
+      resize.setAttribute('aria-label', 'Cambiar tamaño del grupo');
+      element.append(title, resize);
+      canvas.appendChild(element);
+      element.addEventListener('pointerdown', event => beginShapeDrag(event, shape.id));
+      element.addEventListener('click', event => {
+        event.stopPropagation();
+        if (connectMode) handleConnectClick(shape.id);
+        else if (event.shiftKey || event.ctrlKey || event.metaKey) toggleEntitySelection(shape.id);
+        else if (selectedEntityIds.size < 2 || !selectedEntityIds.has(shape.id)) selectItem({ kind: 'shape', id: shape.id });
+      });
+      element.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          selectItem({ kind: 'shape', id: shape.id });
+        }
+      });
+      resize.addEventListener('pointerdown', event => beginShapeResize(event, shape.id));
+    }
+    element.classList.toggle('ellipse', shape.type === 'ellipse');
+    element.classList.toggle('selected', selectedEntityIds.has(shape.id));
+    element.classList.toggle('multi-selected', selectedEntityIds.size > 1 && selectedEntityIds.has(shape.id));
+    element.style.left = `${shape.x}px`;
+    element.style.top = `${shape.y}px`;
+    element.style.width = `${shape.width}px`;
+    element.style.height = `${shape.height}px`;
+    element.style.setProperty('--group-color', shape.color);
+    element.style.setProperty('--group-fill', `${shape.color}24`);
+    element.querySelector('.group-shape-title').textContent = shape.title || 'Grupo';
+    element.setAttribute('aria-label', `Grupo: ${shape.title || 'Sin título'}, ${shape.type === 'ellipse' ? 'elipse' : 'rectángulo'}`);
+  }
+  function beginShapeDrag(event, id) {
+    if (event.button !== 0 || connectMode || event.shiftKey || event.ctrlKey || event.metaKey ||
+        event.target.closest('.group-shape-resize')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const shape = getShape(id);
+    if (!shape) return;
+    if (!selectedEntityIds.has(id)) selectItem({ kind: 'shape', id });
+    beginEntityDrag(event, id);
+  }
+  function beginShapeResize(event, id) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const shape = getShape(id);
+    if (!shape) return;
+    if (selected?.id !== id || selected?.kind !== 'shape') selectItem({ kind: 'shape', id });
+    recordHistory();
+    const startX = event.clientX, startY = event.clientY;
+    const startWidth = shape.width, startHeight = shape.height;
+    let resized = false;
+    const move = moveEvent => {
+      const width = Math.max(140, Math.min(2000, startWidth + (moveEvent.clientX - startX) / zoom));
+      const height = Math.max(100, Math.min(1600, startHeight + (moveEvent.clientY - startY) / zoom));
+      if (Math.abs(width - startWidth) + Math.abs(height - startHeight) < 2) return;
+      resized = true;
+      shape.width = Math.round(width);
+      shape.height = Math.round(height);
+      renderShape(shape);
+      renderEdges();
+    };
+    const finish = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      if (resized) { recordHistory(); saveState(); }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
   }
   function renderIconImage(container, iconId, fallbackText, className) {
     const url = window.ArqSketchDiagram.iconifyUrl(iconId);
@@ -284,16 +439,16 @@
       el.addEventListener('click', event => {
         event.stopPropagation();
         if (connectMode) handleConnectClick(n.id);
-        else if (event.shiftKey || event.ctrlKey || event.metaKey) toggleNodeSelection(n.id);
-        else if (selectedNodeIds.size < 2 || !selectedNodeIds.has(n.id)) selectItem({ kind: 'node', id: n.id });
+        else if (event.shiftKey || event.ctrlKey || event.metaKey) toggleEntitySelection(n.id);
+        else if (selectedEntityIds.size < 2 || !selectedEntityIds.has(n.id)) selectItem({ kind: 'node', id: n.id });
       });
     }
     const info = TYPES[n.type];
     el.style.left = `${n.x}px`; el.style.top = `${n.y}px`;
     el.style.width = `${n.width || 228}px`;
     el.style.height = n.height ? `${n.height}px` : 'auto';
-    const isSelected = selectedNodeIds.has(n.id);
-    el.className = `node ${n.type}${isSelected ? ' selected' : ''}${selectedNodeIds.size > 1 && isSelected ? ' multi-selected' : ''}`;
+    const isSelected = selectedEntityIds.has(n.id);
+    el.className = `node ${n.type}${isSelected ? ' selected' : ''}${selectedEntityIds.size > 1 && isSelected ? ' multi-selected' : ''}`;
     const iconContainer = el.querySelector('.node-symbol');
     iconContainer.replaceChildren();
     renderIconImage(iconContainer, n.icon, ICONS[n.icon]?.symbol || info.symbol, 'node-icon-image');
@@ -486,56 +641,272 @@
     label.textContent = `Icono actual: ${icon?.label || window.ArqSketchDiagram.iconifyParts(node.icon)?.name || 'Predeterminado'}`;
     selectedIcon.append(preview, label);
   }
+  function anchorPoint(node, element, anchor) {
+    const width = element?.offsetWidth || node.width || 228;
+    const height = element?.offsetHeight || node.height || 130;
+    const offset = anchor.offset;
+    if (!node.name && node.type === 'ellipse') {
+      const position = offset * 2 - 1;
+      if (anchor.side === 'top' || anchor.side === 'bottom') {
+        const x = node.x + width * offset;
+        const delta = Math.sqrt(Math.max(0, 1 - position ** 2)) * height / 2;
+        return { x, y: node.y + height / 2 + (anchor.side === 'top' ? -delta : delta) };
+      }
+      const y = node.y + height * offset;
+      const delta = Math.sqrt(Math.max(0, 1 - position ** 2)) * width / 2;
+      return { x: node.x + width / 2 + (anchor.side === 'left' ? -delta : delta), y };
+    }
+    if (anchor.side === 'top') return { x: node.x + width * offset, y: node.y };
+    if (anchor.side === 'right') return { x: node.x + width, y: node.y + height * offset };
+    if (anchor.side === 'bottom') return { x: node.x + width * offset, y: node.y + height };
+    return { x: node.x, y: node.y + height * offset };
+  }
+  function nearestAnchor(node, element, point) {
+    const width = element?.offsetWidth || node.width || 228;
+    const height = element?.offsetHeight || node.height || 130;
+    const x = Math.max(node.x, Math.min(node.x + width, point.x));
+    const y = Math.max(node.y, Math.min(node.y + height, point.y));
+    const distances = [
+      { side: 'top', distance: Math.abs(point.y - node.y) },
+      { side: 'right', distance: Math.abs(point.x - node.x - width) },
+      { side: 'bottom', distance: Math.abs(point.y - node.y - height) },
+      { side: 'left', distance: Math.abs(point.x - node.x) },
+    ];
+    const nearest = distances.reduce((best, item) => item.distance < best.distance ? item : best);
+    const length = nearest.side === 'top' || nearest.side === 'bottom' ? width : height;
+    const relativeOffset = nearest.side === 'top' || nearest.side === 'bottom' ? x - node.x : y - node.y;
+    if (!node.name && node.type === 'ellipse') {
+      const centerX = node.x + width / 2;
+      const centerY = node.y + height / 2;
+      const normalizedX = (point.x - centerX) / (width / 2);
+      const normalizedY = (point.y - centerY) / (height / 2);
+      const side = Math.abs(normalizedX) > Math.abs(normalizedY)
+        ? (normalizedX >= 0 ? 'right' : 'left')
+        : (normalizedY >= 0 ? 'bottom' : 'top');
+      const offset = side === 'left' || side === 'right'
+        ? Math.max(0, Math.min(1, (point.y - node.y) / height))
+        : Math.max(0, Math.min(1, (point.x - node.x) / width));
+      return { side, offset };
+    }
+    return { side: nearest.side, offset: Math.max(0, Math.min(1, relativeOffset / length)) };
+  }
+  function addConnectionHandle(edge, point, label, drag) {
+    const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    handle.setAttribute('cx', point.x);
+    handle.setAttribute('cy', point.y);
+    handle.setAttribute('r', '6');
+    handle.setAttribute('class', `connection-handle${drag === 'via' ? ' connection-route-handle' : ' connection-anchor-handle'}`);
+    handle.setAttribute('role', 'button');
+    handle.setAttribute('tabindex', '0');
+    handle.setAttribute('aria-label', label);
+    handle.setAttribute('title', label);
+    handle.addEventListener('pointerdown', event => {
+      if (drag === 'via') beginEdgeRouteDrag(event, edge, point);
+      else beginEdgeAnchorDrag(event, edge, drag);
+    });
+    handle.addEventListener('click', event => event.stopPropagation());
+    connectionControlsSvg.appendChild(handle);
+  }
   function renderEdges() {
-    svg.innerHTML = '<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L8,3 z" fill="#8290b1"></path></marker><marker id="arrowSelected" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L8,3 z" fill="#a99dff"></path></marker></defs>';
+    svg.innerHTML = '<defs></defs>';
+    const defs = svg.querySelector('defs');
+    connectionControlsSvg.replaceChildren();
     edges.forEach((e, i) => {
-      const a = getNode(e.from), b = getNode(e.to);
+      const a = getDiagramEntity(e.from), b = getDiagramEntity(e.to);
       if (!a || !b) return;
       const ac = nodeCenter(a), bc = nodeCenter(b);
-      const aElement = document.getElementById(a.id);
-      const bElement = document.getElementById(b.id);
-      const aHalfWidth = (aElement?.offsetWidth || a.width || 228) / 2;
-      const aHalfHeight = (aElement?.offsetHeight || a.height || 91) / 2;
-      const bHalfWidth = (bElement?.offsetWidth || b.width || 228) / 2;
-      const bHalfHeight = (bElement?.offsetHeight || b.height || 91) / 2;
+      const aElement = entityElement(a);
+      const bElement = entityElement(b);
       const dx = bc.x - ac.x, dy = bc.y - ac.y;
       const horizontal = Math.abs(dx) > Math.abs(dy);
-      const sx = ac.x + (horizontal ? Math.sign(dx) * aHalfWidth : 0);
-      const sy = ac.y + (horizontal ? 0 : Math.sign(dy) * aHalfHeight);
-      const ex = bc.x - (horizontal ? Math.sign(dx) * bHalfWidth : 0);
-      const ey = bc.y - (horizontal ? 0 : Math.sign(dy) * bHalfHeight);
-      const bend = Math.max(35, Math.abs(horizontal ? ex-sx : ey-sy) * .42);
-      const c1x = horizontal ? sx + Math.sign(dx) * bend : sx;
-      const c1y = horizontal ? sy : sy + Math.sign(dy) * bend;
-      const c2x = horizontal ? ex - Math.sign(dx) * bend : ex;
-      const c2y = horizontal ? ey : ey - Math.sign(dy) * bend;
-      const d = `M ${sx} ${sy} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${ex} ${ey}`;
+      const sourceAnchor = e.fromAnchor || {
+        side: horizontal ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'bottom' : 'top'),
+        offset: 0.5,
+      };
+      const targetAnchor = e.toAnchor || {
+        side: horizontal ? (dx >= 0 ? 'left' : 'right') : (dy >= 0 ? 'top' : 'bottom'),
+        offset: 0.5,
+      };
+      const sourcePoint = anchorPoint(a, aElement, sourceAnchor);
+      const targetPoint = anchorPoint(b, bElement, targetAnchor);
+      const { x: sx, y: sy } = sourcePoint;
+      const { x: ex, y: ey } = targetPoint;
+      const bend = Math.max(35, Math.hypot(ex - sx, ey - sy) * .42);
+      const directions = {
+        top: { x: 0, y: -1 },
+        right: { x: 1, y: 0 },
+        bottom: { x: 0, y: 1 },
+        left: { x: -1, y: 0 },
+      };
+      const sourceDirection = directions[sourceAnchor.side];
+      const targetDirection = directions[targetAnchor.side];
+      const c1x = sx + sourceDirection.x * bend;
+      const c1y = sy + sourceDirection.y * bend;
+      const c2x = ex + targetDirection.x * bend;
+      const c2y = ey + targetDirection.y * bend;
+      const chordMidpoint = { x: (sx + ex) / 2, y: (sy + ey) / 2 };
+      const curveMidpoint = e.via
+        ? { x: chordMidpoint.x + e.via.x, y: chordMidpoint.y + e.via.y }
+        : {
+            x: (sx + 3 * c1x + 3 * c2x + ex) / 8,
+            y: (sy + 3 * c1y + 3 * c2y + ey) / 8,
+          };
+      const d = e.via
+        ? `M ${sx} ${sy} Q ${chordMidpoint.x + 2 * e.via.x} ${chordMidpoint.y + 2 * e.via.y} ${ex} ${ey}`
+        : `M ${sx} ${sy} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${ex} ${ey}`;
+      const selectedEdge = selected?.kind === 'edge' && selected.id === e.id;
+      const edgeColor = selectedEdge ? '#a99dff' : EDGE_TYPE_COLORS[e.connectionType || 'general'];
+      const markerId = `arrow-${e.id}`;
+      const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+      marker.setAttribute('id', markerId);
+      marker.setAttribute('markerWidth', '9');
+      marker.setAttribute('markerHeight', '9');
+      marker.setAttribute('refX', '7');
+      marker.setAttribute('refY', '3');
+      marker.setAttribute('orient', 'auto-start-reverse');
+      marker.setAttribute('markerUnits', 'strokeWidth');
+      const arrowHead = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      arrowHead.setAttribute('d', 'M0,0 L0,6 L8,3 z');
+      arrowHead.setAttribute('fill', edgeColor);
+      marker.appendChild(arrowHead);
+      defs.appendChild(marker);
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', d); path.setAttribute('class', `connection${selected?.kind === 'edge' && selected.id === e.id ? ' selected' : ''}`);
+      path.setAttribute('d', d);
+      path.setAttribute('class', `connection type-${e.connectionType || 'general'} style-${e.style || 'solid'}${selectedEdge ? ' selected' : ''}`);
       path.dataset.edgeId = e.id;
-      path.setAttribute('marker-end', selected?.kind === 'edge' && selected.id === e.id ? 'url(#arrowSelected)' : 'url(#arrow)');
+      path.style.stroke = edgeColor;
+      if (e.style === 'dashed') path.style.strokeDasharray = '9 6';
+      if (e.style === 'dotted') {
+        path.style.strokeDasharray = '1 6';
+        path.style.strokeLinecap = 'round';
+      }
+      if (e.direction === 'forward' || e.direction === 'both') path.setAttribute('marker-end', `url(#${markerId})`);
+      if (e.direction === 'reverse' || e.direction === 'both') path.setAttribute('marker-start', `url(#${markerId})`);
       path.style.pointerEvents = 'stroke';
       path.addEventListener('click', ev => { ev.stopPropagation(); selectItem({ kind: 'edge', id: e.id }); });
       svg.appendChild(path);
-      if (e.label) {
+      if (e.direction !== 'none') {
+        const flow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        flow.setAttribute('d', d);
+        flow.setAttribute('class', `connection-flow${e.direction === 'reverse' ? ' reverse' : ''}`);
+        flow.setAttribute('aria-hidden', 'true');
+        svg.appendChild(flow);
+        if (e.direction === 'both') {
+          const reverseFlow = flow.cloneNode();
+          reverseFlow.setAttribute('class', 'connection-flow reverse');
+          svg.appendChild(reverseFlow);
+        }
+      }
+      const typeLabel = e.connectionType && e.connectionType !== 'general'
+        ? EDGE_TYPE_LABELS[e.connectionType]
+        : '';
+      const connectionLabel = [typeLabel, e.label].filter(Boolean).join(' · ');
+      if (connectionLabel) {
+        const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        labelGroup.setAttribute('class', 'connection-label-group');
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', (sx + ex) / 2); text.setAttribute('y', (sy + ey) / 2 - 8);
-        text.setAttribute('text-anchor', 'middle'); text.setAttribute('class', 'connection-label'); text.textContent = e.label;
-        svg.appendChild(text);
+        text.setAttribute('x', curveMidpoint.x); text.setAttribute('y', curveMidpoint.y - 8);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('class', 'connection-label');
+        text.textContent = connectionLabel;
+        labelGroup.appendChild(text);
+        svg.appendChild(labelGroup);
+        const bounds = text.getBBox();
+        const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        background.setAttribute('x', bounds.x - 8);
+        background.setAttribute('y', bounds.y - 5);
+        background.setAttribute('width', bounds.width + 16);
+        background.setAttribute('height', bounds.height + 10);
+        background.setAttribute('rx', '6');
+        background.setAttribute('class', 'connection-label-background');
+        background.style.stroke = edgeColor;
+        labelGroup.insertBefore(background, text);
+      }
+      if (selectedEdge) {
+        addConnectionHandle(e, sourcePoint, 'Mover extremo inicial en la tarjeta', 'fromAnchor');
+        addConnectionHandle(e, targetPoint, 'Mover punta de flecha en la tarjeta', 'toAnchor');
+        addConnectionHandle(e, curveMidpoint, 'Mover recorrido de la conexión', 'via');
       }
     });
   }
+  function beginEdgeRouteDrag(event, edge, initialPoint) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    recordHistory();
+    let moved = false;
+    const move = pointerEvent => {
+      const bounds = canvas.getBoundingClientRect();
+      const point = {
+        x: (pointerEvent.clientX - bounds.left) / zoom,
+        y: (pointerEvent.clientY - bounds.top) / zoom,
+      };
+      moved ||= point.x !== initialPoint.x || point.y !== initialPoint.y;
+      if (!moved) return;
+      const a = nodeCenter(getDiagramEntity(edge.from));
+      const b = nodeCenter(getDiagramEntity(edge.to));
+      const chordMidpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      edge.via = { x: point.x - chordMidpoint.x, y: point.y - chordMidpoint.y };
+      renderEdges();
+    };
+    const finish = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      if (moved) {
+        saveState();
+        recordHistory();
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish, { once: true });
+    window.addEventListener('pointercancel', finish, { once: true });
+  }
+  function beginEdgeAnchorDrag(event, edge, anchorKey) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    recordHistory();
+    const node = getDiagramEntity(anchorKey === 'fromAnchor' ? edge.from : edge.to);
+    let moved = false;
+    const move = pointerEvent => {
+      const bounds = canvas.getBoundingClientRect();
+      const point = {
+        x: (pointerEvent.clientX - bounds.left) / zoom,
+        y: (pointerEvent.clientY - bounds.top) / zoom,
+      };
+      edge[anchorKey] = nearestAnchor(node, entityElement(node), point);
+      moved = true;
+      renderEdges();
+    };
+    const finish = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      if (moved) {
+        saveState();
+        recordHistory();
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish, { once: true });
+    window.addEventListener('pointercancel', finish, { once: true });
+  }
   function selectItem(item) {
     selected = item;
-    selectedNodeIds = item?.kind === 'node' ? new Set([item.id]) : new Set();
+    selectedEntityIds = item && ['node', 'shape'].includes(item.kind) ? new Set([item.id]) : new Set();
     nodes.forEach(renderNode);
     renderEdges();
     updateSelectionActions();
     const isNode = item?.kind === 'node';
     const isEdge = item?.kind === 'edge';
+    const isShape = item?.kind === 'shape';
     noSelection.classList.toggle('hidden', !!item);
+    propertiesScroll.classList.toggle('hidden', !item);
     propertyForm.classList.toggle('hidden', !isNode);
     edgePropertyForm.classList.toggle('hidden', !isEdge);
+    shapePropertyForm.classList.toggle('hidden', !isShape);
+    shapes.forEach(renderShape);
     if (isNode) {
       const n = getNode(item.id);
       nodeName.value = n.name; nodeType.value = TYPES[n.type].label;
@@ -547,39 +918,53 @@
     } else if (isEdge) {
       updateSelectedIcon();
       const edge = edges.find(candidate => candidate.id === item.id);
-      const from = getNode(edge.from), to = getNode(edge.to);
-      edgeSummary.textContent = `${from?.name || 'Componente'} → ${to?.name || 'Componente'}`;
+      const from = getDiagramEntity(edge.from), to = getDiagramEntity(edge.to);
+      edgeSummary.textContent = `${from ? entityTitle(from) : 'Componente'} → ${to ? entityTitle(to) : 'Componente'}`;
       edgeLabel.value = edge.label || '';
+      edgeDirection.value = edge.direction || 'forward';
+      edgeStyle.value = edge.style || 'solid';
+      edgeConnectionType.value = edge.connectionType || 'general';
+    } else if (isShape) {
+      const shape = getShape(item.id);
+      shapeTitle.value = shape.title;
+      shapeType.value = shape.type;
+      shapeColor.value = shape.color;
     } else {
       updateSelectedIcon();
-      noSelection.innerHTML = '<div class="select-illustration">⌁</div><b>Ningún elemento seleccionado</b><p>Selecciona un componente o una conexión del lienzo para ver sus propiedades.</p>';
+      noSelection.innerHTML = '<div class="select-illustration">⌁</div><b>Ningún elemento seleccionado</b><p>Selecciona un componente, grupo o conexión del lienzo para ver sus propiedades.</p>';
     }
   }
-  function toggleNodeSelection(id) {
-    const next = new Set(selectedNodeIds);
+  function toggleEntitySelection(id) {
+    const next = new Set(selectedEntityIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
     selectMultiple(next);
   }
   function selectMultiple(ids) {
-    const validIds = new Set([...ids].filter(id => getNode(id)));
+    const validIds = new Set([...ids].filter(id => getDiagramEntity(id)));
     if (validIds.size <= 1) {
-      selectItem(validIds.size ? { kind: 'node', id: [...validIds][0] } : null);
+      const id = [...validIds][0];
+      selectItem(id ? { kind: getNode(id) ? 'node' : 'shape', id } : null);
       return;
     }
     selected = null;
-    selectedNodeIds = validIds;
+    selectedEntityIds = validIds;
     nodes.forEach(renderNode);
+    shapes.forEach(renderShape);
     renderEdges();
     noSelection.classList.remove('hidden');
-    noSelection.innerHTML = `<div class="select-illustration">⌖</div><b>${validIds.size} componentes seleccionados</b><p>Arrástralos juntos o usa las acciones de alineación en el lienzo.</p>`;
+    propertiesScroll.classList.add('hidden');
+    const componentCount = [...validIds].filter(id => getNode(id)).length;
+    const groupCount = validIds.size - componentCount;
+    noSelection.innerHTML = `<div class="select-illustration">⌖</div><b>${validIds.size} elementos seleccionados</b><p>${componentCount} componentes y ${groupCount} grupos. Arrástralos juntos o usa las acciones de alineación.</p>`;
     propertyForm.classList.add('hidden');
     edgePropertyForm.classList.add('hidden');
+    shapePropertyForm.classList.add('hidden');
     updateSelectedIcon();
     updateSelectionActions();
   }
   function updateSelectionActions() {
-    const count = selectedNodeIds.size;
+    const count = selectedEntityIds.size;
     selectionActions.hidden = count < 2;
     selectionCount.textContent = `${count} seleccionados`;
     selectionActions.querySelectorAll('[data-selection-action^="distribute-"]').forEach(button => {
@@ -610,9 +995,22 @@
     note.className = 'details-note';
     note.textContent = 'Documenta la configuración, pero no guardes claves ni secretos.';
     componentDetails.appendChild(note);
+    let fieldsContainer = componentDetails;
+    if (node.type === 'backend') {
+      const apiGroup = document.createElement('details');
+      apiGroup.className = 'component-subgroup';
+      apiGroup.open = true;
+      const summary = document.createElement('summary');
+      summary.textContent = 'Servicio API';
+      const content = document.createElement('div');
+      content.className = 'component-subgroup-content';
+      apiGroup.append(summary, content);
+      componentDetails.appendChild(apiGroup);
+      fieldsContainer = content;
+    }
     fields.forEach(field => {
       const fieldId = `detail-${node.id}-${field.key}`;
-      appendFieldLabel(componentDetails, field.label, fieldId);
+      appendFieldLabel(fieldsContainer, field.label, fieldId);
       const control = document.createElement(field.type === 'textarea' ? 'textarea' : field.type === 'select' ? 'select' : 'input');
       control.id = fieldId;
       control.dataset.detailKey = field.key;
@@ -623,14 +1021,17 @@
         if (field.placeholder) control.placeholder = field.placeholder;
       }
       control.value = node.details[field.key] || '';
-      componentDetails.appendChild(control);
+      fieldsContainer.appendChild(control);
     });
     if (node.type === 'backend') renderEndpointEditor(node);
   }
   function renderEndpointEditor(node) {
+    const endpointGroup = document.createElement('details');
+    endpointGroup.className = 'component-subgroup endpoint-group';
+    endpointGroup.open = true;
     const endpointsHeading = document.createElement('h4');
     endpointsHeading.textContent = `Endpoints (${node.details.endpoints.length})`;
-    componentDetails.appendChild(endpointsHeading);
+    endpointGroup.appendChild(endpointsHeading);
     const endpoints = document.createElement('div');
     endpoints.className = 'endpoint-list';
     node.details.endpoints.forEach((endpoint, index) => {
@@ -698,22 +1099,26 @@
       card.appendChild(remove);
       endpoints.appendChild(card);
     });
-    componentDetails.appendChild(endpoints);
+    endpointGroup.appendChild(endpoints);
     const add = document.createElement('button');
     add.type = 'button';
     add.className = 'btn btn-quiet endpoint-add';
     add.dataset.action = 'add-endpoint';
     add.textContent = '＋ Agregar endpoint';
     add.disabled = node.details.endpoints.length >= 100;
-    componentDetails.appendChild(add);
+    endpointGroup.appendChild(add);
+    componentDetails.appendChild(endpointGroup);
   }
   function beginDrag(event, id) {
     if (event.button !== 0 || connectMode || event.shiftKey || event.ctrlKey || event.metaKey) return;
-    if (!selectedNodeIds.has(id)) selectItem({ kind: 'node', id });
+    if (!selectedEntityIds.has(id)) selectItem({ kind: 'node', id });
+    beginEntityDrag(event, id);
+  }
+  function beginEntityDrag(event, id) {
     recordHistory();
-    const movingNodes = [...selectedNodeIds].map(nodeId => {
-      const node = getNode(nodeId);
-      return { node, x: node.x, y: node.y };
+    const movingEntities = [...selectedEntityIds].map(entityId => {
+      const entity = getDiagramEntity(entityId);
+      return { entity, x: entity.x, y: entity.y };
     });
     const startX = event.clientX, startY = event.clientY;
     let moved = false;
@@ -721,10 +1126,11 @@
       const dx = (ev.clientX - startX) / zoom, dy = (ev.clientY - startY) / zoom;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
       if (!moved) return;
-      movingNodes.forEach(({ node, x, y }) => {
-        node.x = Math.max(0, x + dx);
-        node.y = Math.max(0, y + dy);
-        renderNode(node);
+      movingEntities.forEach(({ entity, x, y }) => {
+        entity.x = Math.max(-100000, Math.min(100000, x + dx));
+        entity.y = Math.max(-100000, Math.min(100000, y + dy));
+        if (entity.name) renderNode(entity);
+        else renderShape(entity);
       });
       renderEdges();
     };
@@ -742,15 +1148,16 @@
   }
   function handleConnectClick(id) {
     if (!connectFrom) {
-      connectFrom = id; notify('Ahora selecciona el componente de destino.'); modeStatus.textContent = 'Modo: elige destino';
+      connectFrom = id; notify('Ahora selecciona el componente o grupo de destino.'); modeStatus.textContent = 'Modo: elige destino';
       return;
     }
     if (connectFrom === id) { notify('Elige un componente diferente.'); return; }
     if (!edges.some(e => e.from === connectFrom && e.to === id)) {
       recordHistory();
-      edges.push({ id: makeId('con'), from: connectFrom, to: id, label: '' });
+      edges.push({ id: makeId('con'), from: connectFrom, to: id, label: '', direction: 'forward', style: 'solid', connectionType: 'general' });
       recordHistory();
-      notify('Conexión creada.');
+      const from = getDiagramEntity(connectFrom), to = getDiagramEntity(id);
+      notify(`Conexión creada: ${entityTitle(from)} → ${entityTitle(to)}.`);
     } else notify('Esa conexión ya existe.');
     connectFrom = null; setConnectMode(false); renderEdges(); updateCounts(); saveState();
   }
@@ -759,7 +1166,7 @@
     canvas.classList.toggle('connect-mode', on);
     document.getElementById('connectModeBtn').classList.toggle('active', on);
     modeStatus.textContent = on ? 'Modo: conectar (elige origen)' : 'Modo: selección';
-    if (on) notify('Selecciona el componente de origen y luego el destino.');
+    if (on) notify('Selecciona un componente o grupo de origen y luego el destino.');
   }
   function connectFromNode(id) {
     if (!connectMode) setConnectMode(true);
@@ -767,19 +1174,30 @@
     modeStatus.textContent = 'Modo: elige destino';
     notify('Selecciona el componente de destino.');
   }
+  function connectFromShape(id) {
+    if (!connectMode) setConnectMode(true);
+    connectFrom = id;
+    modeStatus.textContent = 'Modo: elige destino';
+    notify('Selecciona el componente o grupo de destino.');
+  }
   function closeContextMenu() {
     contextMenu.hidden = true;
     contextTarget = null;
   }
   function openContextMenu(event) {
     const nodeElement = event.target.closest('.node');
+    const shapeElement = event.target.closest('.group-shape');
     const edgeElement = event.target.closest('.connection');
-    if (!nodeElement && !edgeElement) return;
+    if (!nodeElement && !shapeElement && !edgeElement) return;
     event.preventDefault();
     if (nodeElement) {
       const id = nodeElement.id;
-      if (!selectedNodeIds.has(id)) selectItem({ kind: 'node', id });
+      if (!selectedEntityIds.has(id)) selectItem({ kind: 'node', id });
       contextTarget = { kind: 'node', id };
+    } else if (shapeElement) {
+      const id = shapeElement.dataset.shapeId;
+      if (!selectedEntityIds.has(id)) selectItem({ kind: 'shape', id });
+      contextTarget = { kind: 'shape', id };
     } else {
       const edge = edges.find(candidate => candidate.id === edgeElement.dataset.edgeId);
       if (!edge) return;
@@ -794,6 +1212,14 @@
           ['edit', 'Editar propiedades'],
           ['delete', 'Eliminar selección', true],
         ]
+      : contextTarget.kind === 'shape'
+        ? [
+            ['copy', 'Copiar grupo'],
+            ['duplicate', 'Duplicar grupo'],
+            ['connect', 'Conectar desde aquí'],
+            ['edit', 'Editar propiedades'],
+            ['delete', 'Eliminar grupo', true],
+          ]
       : [
           ['edit', 'Editar conexión'],
           ['delete', 'Eliminar conexión', true],
@@ -822,6 +1248,7 @@
     if (action === 'copy') copySelection();
     else if (action === 'duplicate') duplicateSelection();
     else if (action === 'connect' && target.kind === 'node') connectFromNode(target.id);
+    else if (action === 'connect' && target.kind === 'shape') connectFromShape(target.id);
     else if (action === 'edit' && target.kind === 'node') {
       selectItem({ kind: 'node', id: target.id });
       nodeName.focus();
@@ -830,24 +1257,32 @@
       selectItem({ kind: 'edge', id: target.id });
       edgeLabel.focus();
       edgeLabel.select();
+    } else if (action === 'edit' && target.kind === 'shape') {
+      selectItem({ kind: 'shape', id: target.id });
+      shapeTitle.focus();
+      shapeTitle.select();
     } else if (action === 'delete') {
       if (target.kind === 'edge' && selected?.kind !== 'edge') selectItem({ kind: 'edge', id: target.id });
       deleteSelected();
     }
   }
   function deleteSelected() {
-    if (selectedNodeIds.size > 1) {
+    if (selectedEntityIds.size > 1) {
       recordHistory();
-      const removed = new Set(selectedNodeIds);
+      const removed = new Set(selectedEntityIds);
       nodes = nodes.filter(node => !removed.has(node.id));
+      shapes = shapes.filter(shape => !removed.has(shape.id));
       edges = edges.filter(edge => !removed.has(edge.from) && !removed.has(edge.to));
-      removed.forEach(id => document.getElementById(id)?.remove());
+      removed.forEach(id => {
+        document.getElementById(id)?.remove();
+        canvas.querySelector(`.group-shape[data-shape-id="${id}"]`)?.remove();
+      });
       selectItem(null);
       renderEdges();
       updateCounts();
       recordHistory();
       saveState();
-      notify(`${removed.size} componentes eliminados.`);
+      notify(`${removed.size} elementos eliminados.`);
       return;
     }
     if (!selected) return;
@@ -856,23 +1291,32 @@
       nodes = nodes.filter(n => n.id !== selected.id);
       edges = edges.filter(e => e.from !== selected.id && e.to !== selected.id);
       document.getElementById(selected.id)?.remove();
-    } else edges = edges.filter(e => e.id !== selected.id);
+    } else if (selected.kind === 'edge') edges = edges.filter(e => e.id !== selected.id);
+    else {
+      shapes = shapes.filter(shape => shape.id !== selected.id);
+      edges = edges.filter(edge => edge.from !== selected.id && edge.to !== selected.id);
+      canvas.querySelector(`.group-shape[data-shape-id="${selected.id}"]`)?.remove();
+    }
     selected = null; selectItem(null); renderEdges(); updateCounts(); recordHistory(); saveState(); notify('Elemento eliminado.');
   }
   function copySelection({ quiet = false } = {}) {
-    const selectedNodes = nodes.filter(node => selectedNodeIds.has(node.id));
-    if (!selectedNodes.length) {
-      if (!quiet) notify('Selecciona uno o más componentes para copiarlos.');
+    const selectedNodes = nodes.filter(node => selectedEntityIds.has(node.id));
+    const selectedShapes = shapes.filter(shape => selectedEntityIds.has(shape.id));
+    const selectedEntities = [...selectedNodes, ...selectedShapes];
+    if (!selectedEntities.length) {
+      if (!quiet) notify('Selecciona componentes o grupos para copiarlos.');
       return false;
     }
-    const minX = Math.min(...selectedNodes.map(node => node.x));
-    const minY = Math.min(...selectedNodes.map(node => node.y));
-    const ids = new Set(selectedNodes.map(node => node.id));
+    const minX = Math.min(...selectedEntities.map(entity => entity.x));
+    const minY = Math.min(...selectedEntities.map(entity => entity.y));
+    const ids = new Set(selectedEntities.map(entity => entity.id));
     copiedSelection = {
       nodes: JSON.parse(JSON.stringify(selectedNodes)).map(node => ({ ...node, x: node.x - minX, y: node.y - minY })),
+      shapes: JSON.parse(JSON.stringify(selectedShapes)).map(shape => ({ ...shape, x: shape.x - minX, y: shape.y - minY })),
       edges: JSON.parse(JSON.stringify(edges.filter(edge => ids.has(edge.from) && ids.has(edge.to)))),
+      origin: { x: minX, y: minY },
     };
-    if (!quiet) notify(`${selectedNodes.length} componente${selectedNodes.length === 1 ? '' : 's'} copiado${selectedNodes.length === 1 ? '' : 's'}.`);
+    if (!quiet) notify(`${selectedEntities.length} elemento${selectedEntities.length === 1 ? '' : 's'} copiado${selectedEntities.length === 1 ? '' : 's'}.`);
     return true;
   }
   function findGroupPosition(groupNodes, x, y) {
@@ -885,7 +1329,7 @@
       for (let row = -ring; row <= ring; row += 1) {
         for (let column = -ring; column <= ring; column += 1) {
           if (ring && Math.abs(row) !== ring && Math.abs(column) !== ring) continue;
-          const candidate = { x: Math.max(8, x + column * spacingX), y: Math.max(8, y + row * spacingY) };
+          const candidate = { x: x + column * spacingX, y: y + row * spacingY };
           const overlaps = nodes.some(existing => {
             const element = document.getElementById(existing.id);
             const existingWidth = element?.offsetWidth || existing.width || 228;
@@ -897,16 +1341,52 @@
         }
       }
     }
-    return { x: Math.max(8, x), y: Math.max(8, y + nodes.length * spacingY) };
+    return { x, y: y + nodes.length * spacingY };
   }
-  function pasteSelection({ quiet = false } = {}) {
-    if (!copiedSelection?.nodes.length) {
-      if (!quiet) notify('No hay componentes copiados para pegar.');
+  function pasteSelection({ quiet = false, offset = false } = {}) {
+    if (!copiedSelection || (!copiedSelection.nodes.length && !copiedSelection.shapes?.length)) {
+      if (!quiet) notify('No hay componentes o grupos copiados para pegar.');
       return false;
     }
     const rect = wrap.getBoundingClientRect();
-    const anchorX = (rect.width / 2 - panX) / zoom - 114;
-    const anchorY = (rect.height / 2 - panY) / zoom - 65;
+    const anchorX = offset
+      ? copiedSelection.origin.x + 32
+      : (rect.width / 2 - panX) / zoom - 114;
+    const anchorY = offset
+      ? copiedSelection.origin.y + 32
+      : (rect.height / 2 - panY) / zoom - 65;
+    if (!copiedSelection.nodes.length && copiedSelection.shapes?.length) {
+      recordHistory();
+      const groupWidth = Math.max(...copiedSelection.shapes.map(shape => shape.x + shape.width));
+      const groupHeight = Math.max(...copiedSelection.shapes.map(shape => shape.y + shape.height));
+      const shapeOriginX = offset ? anchorX : (rect.width / 2 - panX) / zoom - groupWidth / 2;
+      const shapeOriginY = offset ? anchorY : (rect.height / 2 - panY) / zoom - groupHeight / 2;
+      const idMap = new Map();
+      const pastedShapes = copiedSelection.shapes.map(source => {
+        const shape = { ...JSON.parse(JSON.stringify(source)), id: makeId('grp') };
+        idMap.set(source.id, shape.id);
+        shape.x += shapeOriginX;
+        shape.y += shapeOriginY;
+        shapes.push(shape);
+        renderShape(shape);
+        return shape;
+      });
+      copiedSelection.edges.forEach(source => {
+        edges.push({
+          ...JSON.parse(JSON.stringify(source)),
+          id: makeId('con'),
+          from: idMap.get(source.from),
+          to: idMap.get(source.to),
+        });
+      });
+      selectMultiple(pastedShapes.map(shape => shape.id));
+      renderEdges();
+      updateCounts();
+      recordHistory();
+      saveState();
+      if (!quiet) notify(`${pastedShapes.length} grupo${pastedShapes.length === 1 ? '' : 's'} pegado${pastedShapes.length === 1 ? '' : 's'}.`);
+      return true;
+    }
     const position = findGroupPosition(copiedSelection.nodes, anchorX, anchorY);
     recordHistory();
     const idMap = new Map();
@@ -921,6 +1401,17 @@
       renderNode(node);
       return node;
     });
+    const pastedShapes = copiedSelection.shapes.map(source => {
+      const shape = JSON.parse(JSON.stringify(source));
+      const oldId = shape.id;
+      shape.id = makeId('grp');
+      idMap.set(oldId, shape.id);
+      shape.x += position.x;
+      shape.y += position.y;
+      shapes.push(shape);
+      renderShape(shape);
+      return shape;
+    });
     copiedSelection.edges.forEach(source => {
       edges.push({
         ...JSON.parse(JSON.stringify(source)),
@@ -929,53 +1420,53 @@
         to: idMap.get(source.to),
       });
     });
-    selectMultiple(pastedNodes.map(node => node.id));
+    selectMultiple([...pastedNodes.map(node => node.id), ...pastedShapes.map(shape => shape.id)]);
     renderEdges();
     updateCounts();
     recordHistory();
     saveState();
-    if (!quiet) notify(`${pastedNodes.length} componente${pastedNodes.length === 1 ? '' : 's'} pegado${pastedNodes.length === 1 ? '' : 's'}.`);
+    if (!quiet) notify(`${pastedNodes.length + pastedShapes.length} elemento${pastedNodes.length + pastedShapes.length === 1 ? '' : 's'} pegado${pastedNodes.length + pastedShapes.length === 1 ? '' : 's'}.`);
     return true;
   }
   function duplicateSelection() {
     if (!copySelection({ quiet: true })) return;
-    pasteSelection({ quiet: true });
+    pasteSelection({ quiet: true, offset: true });
     notify('Selección duplicada.');
   }
   function alignSelection(action) {
-    const selectedNodes = nodes.filter(node => selectedNodeIds.has(node.id));
-    if (selectedNodes.length < 2) return;
+    const selectedEntities = [...nodes, ...shapes].filter(entity => selectedEntityIds.has(entity.id));
+    if (selectedEntities.length < 2) return;
     recordHistory();
     if (action === 'align-left') {
-      const x = Math.min(...selectedNodes.map(node => node.x));
-      selectedNodes.forEach(node => { node.x = x; });
+      const x = Math.min(...selectedEntities.map(entity => entity.x));
+      selectedEntities.forEach(entity => { entity.x = x; });
     } else if (action === 'align-top') {
-      const y = Math.min(...selectedNodes.map(node => node.y));
-      selectedNodes.forEach(node => { node.y = y; });
+      const y = Math.min(...selectedEntities.map(entity => entity.y));
+      selectedEntities.forEach(entity => { entity.y = y; });
     } else {
-      if (selectedNodes.length < 3) {
-        notify('Se necesitan al menos tres componentes para distribuir.');
+      if (selectedEntities.length < 3) {
+        notify('Se necesitan al menos tres elementos para distribuir.');
         return;
       }
       const horizontal = action === 'distribute-horizontal';
-      const sorted = selectedNodes.slice().sort((a, b) => horizontal ? a.x - b.x : a.y - b.y);
-      const size = node => {
-        const element = document.getElementById(node.id);
-        return horizontal ? element?.offsetWidth || node.width || 228 : element?.offsetHeight || node.height || 110;
+      const sorted = selectedEntities.slice().sort((a, b) => horizontal ? a.x - b.x : a.y - b.y);
+      const size = entity => {
+        const element = entityElement(entity);
+        return horizontal ? element?.offsetWidth || entity.width || 228 : element?.offsetHeight || entity.height || 110;
       };
       const start = horizontal ? sorted[0].x : sorted[0].y;
-      const endNode = sorted.at(-1);
-      const end = (horizontal ? endNode.x : endNode.y) + size(endNode);
+      const endEntity = sorted.at(-1);
+      const end = (horizontal ? endEntity.x : endEntity.y) + size(endEntity);
       const gap = Math.max(24,
-        (end - start - sorted.reduce((total, node) => total + size(node), 0)) / (sorted.length - 1));
+        (end - start - sorted.reduce((total, entity) => total + size(entity), 0)) / (sorted.length - 1));
       let offset = start;
-      sorted.forEach(node => {
-        if (horizontal) node.x = offset;
-        else node.y = offset;
-        offset += size(node) + gap;
+      sorted.forEach(entity => {
+        if (horizontal) entity.x = offset;
+        else entity.y = offset;
+        offset += size(entity) + gap;
       });
     }
-    selectedNodes.forEach(renderNode);
+    selectedEntities.forEach(entity => entity.name ? renderNode(entity) : renderShape(entity));
     renderEdges();
     recordHistory();
     saveState();
@@ -983,7 +1474,7 @@
   function saveState() {
     renderDiagramJson();
     try {
-      localStorage.setItem('arqsketch-state', JSON.stringify({ nodes, edges, nextId }));
+      localStorage.setItem('arqsketch-state', JSON.stringify({ nodes, edges, shapes, nextId }));
       return true;
     } catch (error) {
       notify(`No se pudo guardar el diagrama en este navegador: ${error.message}`);
@@ -996,9 +1487,9 @@
       if (!raw) return false;
       const data = JSON.parse(raw);
       const diagram = window.ArqSketchDiagram.normalizeDiagram(data, false);
-      nodes = diagram.nodes; edges = diagram.edges; nextId = diagram.nextId;
-      nodes.forEach(renderNode); renderEdges(); updateCounts();
-      return nodes.length > 0;
+      nodes = diagram.nodes; edges = diagram.edges; shapes = diagram.shapes || []; nextId = diagram.nextId;
+      nodes.forEach(renderNode); shapes.forEach(renderShape); renderEdges(); updateCounts();
+      return nodes.length > 0 || shapes.length > 0;
     } catch (error) {
       notify(`No se pudo restaurar el diagrama anterior: ${error.message}`);
       return false;
@@ -1014,33 +1505,81 @@
       } catch {
         throw new Error('El archivo no contiene JSON válido');
       }
-      const diagram = window.ArqSketchDiagram.normalizeDiagram(data);
-      if ((nodes.length || edges.length) &&
-          !confirm('Abrir este archivo reemplazará el diagrama actual. ¿Deseas continuar?')) return;
-
-      recordHistory();
-      nodes = diagram.nodes;
-      edges = diagram.edges;
-      nextId = diagram.nextId;
-      selected = null;
-      connectFrom = null;
-      setConnectMode(false);
-      canvas.querySelectorAll('.node').forEach(node => node.remove());
-      nodes.forEach(renderNode);
-      renderEdges();
-      updateCounts();
-      selectItem(null);
-      recordHistory();
-      const saved = saveState();
-      if (saved) {
-        const componentCount = `${nodes.length} componente${nodes.length === 1 ? '' : 's'}`;
-        const connectionCount = `${edges.length} ${edges.length === 1 ? 'conexión' : 'conexiones'}`;
-        notify(`Diagrama abierto: ${componentCount} y ${connectionCount}.`);
-      }
+      applyDiagramData(data, 'el archivo');
     } catch (error) {
       notify(`No se pudo abrir el diagrama: ${error.message}`);
     } finally {
       importJsonFile.value = '';
+    }
+  }
+  function applyDiagramData(data, sourceDescription = 'el JSON') {
+    const diagram = window.ArqSketchDiagram.normalizeDiagram(data);
+    if ((nodes.length || edges.length || shapes.length) &&
+        !confirm(`Aplicar ${sourceDescription} reemplazará el diagrama actual. ¿Deseas continuar?`)) return false;
+
+    recordHistory();
+    nodes = diagram.nodes;
+    edges = diagram.edges;
+    shapes = diagram.shapes || [];
+    nextId = diagram.nextId;
+    selected = null;
+    connectFrom = null;
+    setConnectMode(false);
+    canvas.querySelectorAll('.node').forEach(node => node.remove());
+    canvas.querySelectorAll('.group-shape').forEach(shape => shape.remove());
+    nodes.forEach(renderNode);
+    shapes.forEach(renderShape);
+    renderEdges();
+    updateCounts();
+    selectItem(null);
+    jsonDraftDirty = false;
+    recordHistory();
+    const saved = saveState();
+    if (saved) {
+      const componentCount = `${nodes.length} componente${nodes.length === 1 ? '' : 's'}`;
+      const connectionCount = `${edges.length} ${edges.length === 1 ? 'conexión' : 'conexiones'}`;
+      notify(`Diagrama abierto: ${componentCount} y ${connectionCount}.`);
+      return true;
+    }
+    return false;
+  }
+  function applyDiagramJson() {
+    try {
+      if (diagramJson.value.length > 5 * 1024 * 1024) {
+        throw new Error('El JSON supera el límite de 5 MB');
+      }
+      let data;
+      try {
+        data = JSON.parse(diagramJson.value);
+      } catch {
+        throw new Error('El texto no contiene JSON válido');
+      }
+      if (applyDiagramData(data)) {
+        jsonDraftDirty = false;
+        renderDiagramJson();
+        jsonEditorStatus.textContent = 'JSON aplicado correctamente.';
+      }
+    } catch (error) {
+      jsonEditorStatus.textContent = `Error: ${error.message}`;
+      notify(`No se pudo aplicar el JSON: ${error.message}`);
+    }
+  }
+  async function pasteDiagramJson() {
+    try {
+      if (!navigator.clipboard?.readText) {
+        throw new Error('El navegador no permite leer el portapapeles aquí. Usa Ctrl+V o Cmd+V en el editor.');
+      }
+      const text = await navigator.clipboard.readText();
+      if (!text) throw new Error('El portapapeles está vacío');
+      if (text.length > 5 * 1024 * 1024) throw new Error('El JSON supera el límite de 5 MB');
+      diagramJson.value = text;
+      jsonDraftDirty = true;
+      jsonEditorStatus.textContent = 'JSON pegado. Revísalo y pulsa “Aplicar JSON” para cargarlo.';
+      diagramJson.focus();
+      notify('JSON pegado en el editor. Pulsa “Aplicar JSON” para cargar el diagrama.');
+    } catch (error) {
+      jsonEditorStatus.textContent = `No se pudo pegar: ${error.message}`;
+      notify(`No se pudo pegar el JSON: ${error.message}`);
     }
   }
   function addAtCanvas(type, clientX, clientY) {
@@ -1056,14 +1595,18 @@
   function loadTemplate() {
     recordHistory();
     historySuspended = true;
-    nodes = []; edges = []; canvas.querySelectorAll('.node').forEach(n => n.remove()); selected = null; nextId = 1;
+    nodes = []; edges = []; shapes = []; canvas.querySelectorAll('.node, .group-shape').forEach(n => n.remove()); selected = null; nextId = 1;
     const w = wrap.clientWidth, h = wrap.clientHeight;
     const startX = Math.max(35, (w - 570) / 2), startY = Math.max(35, (h - 220) / 2);
     const user = addNode('user', startX, startY + 65, { name: 'Usuario final', description: 'Accede desde el navegador' });
     const front = addNode('frontend', startX + 220, startY + 65, { name: 'Frontend web', description: 'Interfaz y experiencia de usuario' });
     const api = addNode('backend', startX + 440, startY + 65, { name: 'API REST', description: 'Autenticación y lógica de negocio' });
     const db = addNode('database', startX + 440, startY + 205, { name: 'PostgreSQL', description: 'Datos de la aplicación' });
-    edges = [{ id: makeId('con'), from: user.id, to: front.id, label: 'HTTPS' }, { id: makeId('con'), from: front.id, to: api.id, label: 'REST / JSON' }, { id: makeId('con'), from: api.id, to: db.id, label: 'SQL' }];
+    edges = [
+      { id: makeId('con'), from: user.id, to: front.id, label: 'HTTPS', connectionType: 'api' },
+      { id: makeId('con'), from: front.id, to: api.id, label: 'REST / JSON', connectionType: 'api' },
+      { id: makeId('con'), from: api.id, to: db.id, label: 'SQL', connectionType: 'data' },
+    ];
     historySuspended = false;
     selectItem(null); renderEdges(); updateCounts(); recordHistory(); saveState(); notify('Plantilla de arquitectura cargada.');
   }
@@ -1074,10 +1617,12 @@
     URL.revokeObjectURL(url);
   }
   function diagramData() {
-    return { app: 'ArqSketch', version: 1, nodes, edges };
+    return { app: 'ArqSketch', version: 1, nodes, edges, shapes };
   }
   function renderDiagramJson() {
-    diagramJson.textContent = JSON.stringify(diagramData(), null, 2);
+    if (jsonDraftDirty) return;
+    diagramJson.value = JSON.stringify(diagramData(), null, 2);
+    jsonEditorStatus.textContent = 'Edita el JSON o pega uno para cargar un diagrama.';
   }
   function exportJson() {
     download('arquitectura-aplicacion.json', JSON.stringify(diagramData(), null, 2), 'application/json');
@@ -1086,26 +1631,49 @@
   async function copyDiagramJson() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('El navegador no permite acceder al portapapeles en este contexto.');
-      await navigator.clipboard.writeText(diagramJson.textContent);
+      await navigator.clipboard.writeText(diagramJson.value);
       notify('JSON copiado al portapapeles.');
     } catch (error) {
       notify(`No se pudo copiar el JSON: ${error.message}`);
     }
   }
   function exportSvg() {
-    if (!nodes.length) { notify('Añade al menos un componente antes de exportar.'); return; }
-    const pad = 35, maxX = Math.max(...nodes.map(n => n.x + (document.getElementById(n.id)?.offsetWidth || 228))) + pad;
-    const maxY = Math.max(...nodes.map(n => n.y + (document.getElementById(n.id)?.offsetHeight || 110))) + pad;
-    const minX = Math.min(...nodes.map(n => n.x)) - pad, minY = Math.min(...nodes.map(n => n.y)) - pad;
+    if (!nodes.length && !shapes.length) { notify('Añade al menos un componente o grupo antes de exportar.'); return; }
+    const bounds = [
+      ...nodes.map(node => ({ x: node.x, y: node.y, width: document.getElementById(node.id)?.offsetWidth || node.width || 228, height: document.getElementById(node.id)?.offsetHeight || node.height || 110 })),
+      ...shapes.map(shape => ({ x: shape.x, y: shape.y, width: shape.width, height: shape.height })),
+    ];
+    const pad = 35;
+    const maxX = Math.max(...bounds.map(item => item.x + item.width)) + pad;
+    const maxY = Math.max(...bounds.map(item => item.y + item.height)) + pad;
+    const minX = Math.min(...bounds.map(item => item.x)) - pad, minY = Math.min(...bounds.map(item => item.y)) - pad;
     const width = maxX - minX, height = maxY - minY;
-    const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${minX} ${minY} ${width} ${height}">`, '<rect x="-9999" y="-9999" width="20000" height="20000" fill="#0c1220"/>'];
-    edges.forEach(e => {
-      const a = getNode(e.from), b = getNode(e.to); if (!a || !b) return;
-      const ac = nodeCenter(a), bc = nodeCenter(b);
-      parts.push(`<path d="M ${ac.x} ${ac.y} L ${bc.x} ${bc.y}" stroke="#8290b1" stroke-width="2" fill="none" marker-end="url(#arr)"/>`);
-      if (e.label) parts.push(`<text x="${(ac.x+bc.x)/2}" y="${(ac.y+bc.y)/2-8}" text-anchor="middle" fill="#aab5ca" font-size="10">${escapeXml(e.label)}</text>`);
+    const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${minX} ${minY} ${width} ${height}">`, `<rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="#0c1220"/>`];
+    shapes.forEach(shape => {
+      const geometry = shape.type === 'ellipse'
+        ? `<ellipse cx="${shape.x + shape.width / 2}" cy="${shape.y + shape.height / 2}" rx="${shape.width / 2}" ry="${shape.height / 2}"/>`
+        : `<rect x="${shape.x}" y="${shape.y}" width="${shape.width}" height="${shape.height}" rx="16"/>`;
+      parts.push(`<g fill="${shape.color}24" stroke="${shape.color}" stroke-width="2" stroke-dasharray="8 6">${geometry}</g>`);
+      parts.push(`<text x="${shape.x + shape.width / 2}" y="${shape.y + 24}" text-anchor="middle" fill="${shape.color}" font-size="14" font-weight="bold">${escapeXml(shape.title || 'Grupo')}</text>`);
     });
-    parts.push('<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#8290b1"/></marker></defs>');
+    edges.forEach(e => {
+      const a = getDiagramEntity(e.from), b = getDiagramEntity(e.to); if (!a || !b) return;
+      const ac = nodeCenter(a), bc = nodeCenter(b);
+      const edgeType = e.connectionType || 'general';
+      const edgeColor = EDGE_TYPE_COLORS[edgeType] || EDGE_TYPE_COLORS.general;
+      const style = e.style === 'dashed' ? 'stroke-dasharray="9 6"' : e.style === 'dotted' ? 'stroke-dasharray="1 6" stroke-linecap="round"' : '';
+      const marker = `url(#arr-${edgeType})`;
+      const startMarker = e.direction === 'reverse' || e.direction === 'both' ? `marker-start="${marker}"` : '';
+      const endMarker = e.direction === 'forward' || e.direction === 'both' || !e.direction ? `marker-end="${marker}"` : '';
+      parts.push(`<path d="M ${ac.x} ${ac.y} L ${bc.x} ${bc.y}" stroke="${edgeColor}" stroke-width="2" fill="none" ${style} ${startMarker} ${endMarker}/>`);
+      const typeLabel = edgeType !== 'general' ? EDGE_TYPE_LABELS[edgeType] : '';
+      const label = [typeLabel, e.label].filter(Boolean).join(' · ');
+      if (label) parts.push(`<text x="${(ac.x+bc.x)/2}" y="${(ac.y+bc.y)/2-8}" text-anchor="middle" fill="#f3f5ff" stroke="#0c1220" stroke-width="5" stroke-linejoin="round" paint-order="stroke" font-size="12" font-weight="700">${escapeXml(label)}</text>`);
+    });
+    const markerDefs = Object.entries(EDGE_TYPE_COLORS)
+      .map(([type, color]) => `<marker id="arr-${type}" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto-start-reverse"><path d="M0,0 L0,6 L8,3 z" fill="${color}"/></marker>`)
+      .join('');
+    parts.push(`<defs>${markerDefs}</defs>`);
     nodes.forEach(n => {
       const colors = { frontend:'#65bfff', backend:'#a99aff', database:'#4fd7b7', service:'#edb76d', cloud:'#83aaff', user:'#ef8fba' };
       const nodeWidth = document.getElementById(n.id)?.offsetWidth || 228;
@@ -1131,11 +1699,11 @@
   }
   function escapeXml(s) { return String(s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c])); }
   function reset() {
-    if (nodes.length && !confirm('¿Crear un diagrama nuevo? Se borrará el diagrama actual del navegador.')) return;
+    if ((nodes.length || shapes.length) && !confirm('¿Crear un diagrama nuevo? Se borrará el diagrama actual del navegador.')) return;
     recordHistory();
-    nodes = []; edges = []; selected = null; nextId = 1;
+    nodes = []; edges = []; shapes = []; selected = null; nextId = 1;
     zoom = 1; panX = 0; panY = 0;
-    canvas.querySelectorAll('.node').forEach(n => n.remove()); applyTransform(); renderEdges(); updateCounts(); selectItem(null); recordHistory(); saveState(); notify('Lienzo nuevo listo.');
+    canvas.querySelectorAll('.node, .group-shape').forEach(n => n.remove()); applyTransform(); renderEdges(); updateCounts(); selectItem(null); recordHistory(); saveState(); notify('Lienzo nuevo listo.');
   }
 
   document.querySelectorAll('.component').forEach(btn => {
@@ -1222,7 +1790,8 @@
     const node = selected?.kind === 'node' && getNode(selected.id);
     if (!button || !node || node.type !== 'backend') return;
     recordHistory();
-    if (button.dataset.action === 'add-endpoint' && node.details.endpoints.length < 100) {
+    const addingEndpoint = button.dataset.action === 'add-endpoint' && node.details.endpoints.length < 100;
+    if (addingEndpoint) {
       node.details.endpoints.push({
         method: 'GET',
         path: '',
@@ -1237,6 +1806,9 @@
     renderNode(node);
     renderEdges();
     componentDetails.closest('.property-group').open = true;
+    if (addingEndpoint) {
+      componentDetails.querySelector('.endpoint-card:last-child')?.scrollIntoView({ block: 'nearest' });
+    }
     saveState();
     recordHistory();
   });
@@ -1248,10 +1820,44 @@
     saveState();
     scheduleHistoryRecord();
   });
+  for (const [control, property] of [
+    [edgeDirection, 'direction'],
+    [edgeStyle, 'style'],
+    [edgeConnectionType, 'connectionType'],
+  ]) {
+    control.addEventListener('change', () => {
+      const edge = selected?.kind === 'edge' && edges.find(candidate => candidate.id === selected.id);
+      if (!edge) return;
+      recordHistory();
+      edge[property] = control.value;
+      renderEdges();
+      saveState();
+      recordHistory();
+    });
+  }
+  shapeTitle.addEventListener('input', () => {
+    const shape = selected?.kind === 'shape' && getShape(selected.id);
+    if (shape) { shape.title = shapeTitle.value; renderShape(shape); saveState(); scheduleHistoryRecord(); }
+  });
+  shapeType.addEventListener('change', () => {
+    const shape = selected?.kind === 'shape' && getShape(selected.id);
+    if (!shape) return;
+    recordHistory();
+    shape.type = shapeType.value;
+    renderShape(shape);
+    saveState();
+    recordHistory();
+  });
+  shapeColor.addEventListener('input', () => {
+    const shape = selected?.kind === 'shape' && getShape(selected.id);
+    if (shape) { shape.color = shapeColor.value; renderShape(shape); saveState(); scheduleHistoryRecord(); }
+  });
   document.getElementById('connectModeBtn').addEventListener('click', () => setConnectMode(!connectMode));
+  document.getElementById('addShapeBtn').addEventListener('click', addShape);
   document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
   document.getElementById('deleteSelectedBtn').addEventListener('click', deleteSelected);
   document.getElementById('deleteEdgePropertyBtn').addEventListener('click', deleteSelected);
+  document.getElementById('deleteShapeBtn').addEventListener('click', deleteSelected);
   document.getElementById('clearBtn').addEventListener('click', reset);
   document.getElementById('newDiagramBtn').addEventListener('click', reset);
   document.getElementById('importJsonBtn').addEventListener('click', () => importJsonFile.click());
@@ -1277,6 +1883,18 @@
     diagramTab.setAttribute('aria-selected', 'false');
   });
   document.getElementById('copyDiagramJsonBtn').addEventListener('click', copyDiagramJson);
+  document.getElementById('pasteDiagramJsonBtn').addEventListener('click', pasteDiagramJson);
+  document.getElementById('applyDiagramJsonBtn').addEventListener('click', applyDiagramJson);
+  diagramJson.addEventListener('input', () => {
+    jsonDraftDirty = true;
+    jsonEditorStatus.textContent = 'Hay cambios JSON sin aplicar. Pulsa “Aplicar JSON” para validar y cargar el diagrama.';
+  });
+  diagramJson.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      event.preventDefault();
+      applyDiagramJson();
+    }
+  });
   document.getElementById('zoomInBtn').addEventListener('click', () => {
     const rect = wrap.getBoundingClientRect();
     zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, Math.min(1.6, +(zoom + .1).toFixed(2)));
@@ -1306,7 +1924,7 @@
     zoomAt(event.clientX, event.clientY, nextZoom);
   }, { passive: false });
   wrap.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || connectMode || event.target.closest('.node, .connection, button, input, textarea')) return;
+    if (event.button !== 0 || connectMode || event.target.closest('.node, .group-shape, .connection, button, input, textarea')) return;
     if (event.shiftKey || event.ctrlKey || event.metaKey) {
       const wrapRect = wrap.getBoundingClientRect();
       const startX = event.clientX, startY = event.clientY;
@@ -1339,12 +1957,12 @@
           left: Math.min(startX, endX), right: Math.max(startX, endX),
           top: Math.min(startY, endY), bottom: Math.max(startY, endY),
         };
-        const hits = nodes.filter(node => {
-          const rect = document.getElementById(node.id)?.getBoundingClientRect();
+        const hits = [...nodes, ...shapes].filter(entity => {
+          const rect = entityElement(entity)?.getBoundingClientRect();
           return rect && rect.right >= bounds.left && rect.left <= bounds.right &&
             rect.bottom >= bounds.top && rect.top <= bounds.bottom;
         }).map(node => node.id);
-        const selection = new Set(additive ? selectedNodeIds : []);
+        const selection = new Set(additive ? selectedEntityIds : []);
         hits.forEach(id => selection.add(id));
         selectMultiple(selection);
       };
@@ -1389,7 +2007,7 @@
       return;
     }
     if (event.shiftKey || event.ctrlKey || event.metaKey) return;
-    if (!event.target.closest('.node, .connection, button, input, textarea')) selectItem(null);
+    if (!event.target.closest('.node, .group-shape, .connection, button, input, textarea')) selectItem(null);
   });
   wrap.addEventListener('contextmenu', openContextMenu);
   contextMenu.addEventListener('click', event => {
@@ -1427,8 +2045,6 @@
     const transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
     canvas.style.transform = transform;
     canvas.style.transformOrigin = 'top left';
-    svg.style.transform = transform;
-    svg.style.transformOrigin = 'top left';
     zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
     renderEdges();
   }
@@ -1444,7 +2060,7 @@
     applyTransform();
   }
   function fitDiagram() {
-    if (!nodes.length) {
+    if (!nodes.length && !shapes.length) {
       zoom = 1;
       panX = 0;
       panY = 0;
@@ -1452,10 +2068,24 @@
       return;
     }
     const padding = 48;
-    const minX = Math.min(...nodes.map(node => node.x));
-    const minY = Math.min(...nodes.map(node => node.y));
-    const maxX = Math.max(...nodes.map(node => node.x + (document.getElementById(node.id)?.offsetWidth || node.width || 228)));
-    const maxY = Math.max(...nodes.map(node => node.y + (document.getElementById(node.id)?.offsetHeight || node.height || 130)));
+    const bounds = [
+      ...nodes.map(node => ({
+        x: node.x,
+        y: node.y,
+        right: node.x + (document.getElementById(node.id)?.offsetWidth || node.width || 228),
+        bottom: node.y + (document.getElementById(node.id)?.offsetHeight || node.height || 130),
+      })),
+      ...shapes.map(shape => ({
+        x: shape.x,
+        y: shape.y,
+        right: shape.x + shape.width,
+        bottom: shape.y + shape.height,
+      })),
+    ];
+    const minX = Math.min(...bounds.map(item => item.x));
+    const minY = Math.min(...bounds.map(item => item.y));
+    const maxX = Math.max(...bounds.map(item => item.right));
+    const maxY = Math.max(...bounds.map(item => item.bottom));
     zoom = Math.max(.35, Math.min(1.6,
       (wrap.clientWidth - padding * 2) / (maxX - minX),
       (wrap.clientHeight - padding * 2) / (maxY - minY)));

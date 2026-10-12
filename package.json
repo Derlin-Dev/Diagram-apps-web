@@ -1,8 +1,48 @@
 {
-  "name": "db-designer",
-  "version": "2.0.0",
-  "private": true,
-  "description": "Portal de herramientas de diseño de sistemas en el navegador",
+  "name": "db-designer-tools",
+  "displayName": "DB Designer y ArqSketch",
+  "publisher": "derlin-dev",
+  "version": "1.0.0",
+  "description": "Diseñadores de bases de datos y diagramas de arquitectura para VS Code",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onView:designToolsExplorer"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "designTools",
+          "title": "Diseñadores",
+          "icon": "media/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "designTools": [
+        {
+          "id": "designToolsExplorer",
+          "name": "Diseñadores"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "designTools.openDatabaseDesigner",
+        "title": "DB Designer: Abrir diseñador"
+      },
+      {
+        "command": "designTools.openArchitectureDesigner",
+        "title": "ArqSketch: Abrir diagramador"
+      }
+    ]
+  },
   "scripts": {
     "test": "node --test apps/*/tests/*.test.js"
   }

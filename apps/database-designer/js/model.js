@@ -48,8 +48,8 @@
     if (field.type === 'BOOLEAN') {
       return /^(?:true|false|0|1)$/i.test(value) ? null : 'El valor por defecto booleano debe ser true, false, 0 o 1';
     }
-    if (/^CURRENT_TIMESTAMP(?:\(\))?$/i.test(value) && field.type !== 'DATE' && field.type !== 'DATETIME') {
-      return 'CURRENT_TIMESTAMP solo aplica a campos de fecha/hora';
+    if (/^CURRENT_TIMESTAMP(?:\(\))?$/i.test(value) && field.type !== 'DATETIME') {
+      return 'CURRENT_TIMESTAMP solo aplica a campos DATETIME';
     }
     return null;
   }
@@ -175,7 +175,7 @@
         warnings.push('Se omitió una relación con referencias rotas');
         return;
       }
-      relations.push({
+      const normalizedRelation = {
         id: makeId('r'),
         type: r.type === '1:1' ? '1:1' : '1:N',
         sourceTable: st,
@@ -187,7 +187,28 @@
         created: !!r.created,
         uqAdded: !!r.uqAdded,
         group: r.group ? group(r.group) : null,
-      });
+      };
+      for (const key of ['sourceAnchor', 'targetAnchor']) {
+        const anchor = r[key];
+        if (anchor === undefined) continue;
+        if (anchor && typeof anchor === 'object' && !Array.isArray(anchor) &&
+            ['top', 'right', 'bottom', 'left'].includes(anchor.side) &&
+            Number.isFinite(anchor.offset) && anchor.offset >= 0 && anchor.offset <= 1) {
+          normalizedRelation[key] = { side: anchor.side, offset: anchor.offset };
+        } else {
+          warnings.push(`Se restableció un punto de conexión inválido en la relación ${String(r.id || '')}`);
+        }
+      }
+      if (r.via !== undefined) {
+        if (r.via && typeof r.via === 'object' && !Array.isArray(r.via) &&
+            Number.isFinite(r.via.x) && Number.isFinite(r.via.y) &&
+            Math.abs(r.via.x) <= 100000 && Math.abs(r.via.y) <= 100000) {
+          normalizedRelation.via = { x: Math.round(r.via.x), y: Math.round(r.via.y) };
+        } else {
+          warnings.push(`Se restableció un recorrido inválido en la relación ${String(r.id || '')}`);
+        }
+      }
+      relations.push(normalizedRelation);
     });
 
     const model = { tables, relations };
@@ -204,7 +225,7 @@
 
   /* ---------- Validación ---------- */
 
-  function validateModel(model) {
+  function validateModel(model, dialect) {
     const issues = [];
     const tableNames = new Set();
     for (const t of model.tables) {
@@ -218,6 +239,12 @@
         fieldNames.add(fk);
         const defaultError = validateFieldDefault(f);
         if (defaultError) issues.push(`${t.name}.${f.name}: ${defaultError}`);
+        if (f.ai && (!f.pk || t.fields.filter((field) => field.pk).length !== 1 || !INT_TYPES.includes(f.type))) {
+          issues.push(`${t.name}.${f.name}: el autoincremento requiere una clave primaria única de tipo INT o BIGINT`);
+        }
+        if (dialect === 'mysql' && (f.pk || f.uq) && f.type === 'TEXT') {
+          issues.push(`${t.name}.${f.name}: MySQL no permite TEXT en PRIMARY KEY o UNIQUE sin longitud de prefijo`);
+        }
       }
       if (!t.fields.some((f) => f.pk)) issues.push(`La tabla "${t.name}" no tiene clave primaria`);
     }
@@ -234,8 +261,8 @@
       if (sf.type !== tf.type) {
         issues.push(`Tipos distintos: ${a.name}.${sf.name} (${sf.type}) y ${b.name}.${tf.name} (${tf.type})`);
       }
-      if (r.onDelete === 'SET NULL' && tf.nn) {
-        issues.push(`${b.name}.${tf.name}: ON DELETE SET NULL requiere que el campo admita NULL`);
+      if ((r.onDelete === 'SET NULL' || r.onUpdate === 'SET NULL') && tf.nn) {
+        issues.push(`${b.name}.${tf.name}: SET NULL requiere que el campo admita NULL`);
       }
     }
     return issues;
@@ -272,7 +299,7 @@
       if (isFkTarget(model, b.id, tf.id)) throw new Error(`El campo "${tf.name}" ya es una clave foránea`);
     }
 
-    const optional = !!opts.optional || onDelete === 'SET NULL';
+    const optional = !!opts.optional || onDelete === 'SET NULL' || onUpdate === 'SET NULL';
     const rel = {
       id: makeId('r'),
       type,
@@ -386,8 +413,8 @@
 
     const targetFields = targets.map((item) => getField(getTable(model, item.targetTable), item.targetField));
     if (targetFields.some((field) => !field)) throw new Error('Campo destino de relación no encontrado');
-    if (onDelete === 'SET NULL' && targetFields.some((field) => field.pk)) {
-      throw new Error('ON DELETE SET NULL no se puede aplicar a una clave primaria');
+    if ((onDelete === 'SET NULL' || onUpdate === 'SET NULL') && targetFields.some((field) => field.pk)) {
+      throw new Error('SET NULL no se puede aplicar a una clave primaria');
     }
 
     if (!relation.group) {
@@ -406,7 +433,7 @@
       item.onDelete = onDelete;
       item.onUpdate = onUpdate;
       const field = getField(getTable(model, item.targetTable), item.targetField);
-      if (onDelete === 'SET NULL' && !field.pk) field.nn = false;
+      if ((onDelete === 'SET NULL' || onUpdate === 'SET NULL') && !field.pk) field.nn = false;
     }
     return targets;
   }
