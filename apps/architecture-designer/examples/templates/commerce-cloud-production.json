@@ -1,0 +1,615 @@
+{
+  "app": "ArqSketch",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "customer",
+      "type": "user",
+      "name": "Cliente",
+      "description": "Usuario de la tienda",
+      "x": -260,
+      "y": 470,
+      "icon": "user"
+    },
+    {
+      "id": "dns",
+      "type": "security",
+      "name": "DNS público",
+      "description": "Resolución del dominio de la tienda",
+      "x": 95,
+      "y": 235,
+      "width": 190,
+      "height": 150,
+      "icon": "globe",
+      "resourceCatalog": "network",
+      "resourceKind": "dns-zone",
+      "resourceProvider": "AWS",
+      "resourceService": "Route 53",
+      "parentGroupId": "public-zone"
+    },
+    {
+      "id": "cdn",
+      "type": "cloud",
+      "name": "Distribución web",
+      "description": "Entrega contenido estático al usuario",
+      "x": 300,
+      "y": 235,
+      "width": 190,
+      "height": 150,
+      "icon": "cloud",
+      "details": {
+        "provider": "AWS",
+        "region": "Global",
+        "environment": "Producción",
+        "deployment": "PaaS",
+        "scaling": "Distribución global"
+      },
+      "resourceService": "CloudFront",
+      "parentGroupId": "public-zone"
+    },
+    {
+      "id": "waf",
+      "type": "security",
+      "name": "Firewall web",
+      "description": "Filtrado de solicitudes HTTP",
+      "x": 95,
+      "y": 440,
+      "width": 190,
+      "height": 150,
+      "icon": "security",
+      "resourceCatalog": "network",
+      "resourceKind": "firewall",
+      "resourceProvider": "AWS",
+      "resourceService": "AWS WAF",
+      "parentGroupId": "public-zone"
+    },
+    {
+      "id": "alb",
+      "type": "cloud",
+      "name": "Balanceador web",
+      "description": "Distribuye solicitudes entrantes",
+      "x": 300,
+      "y": 440,
+      "width": 190,
+      "height": 150,
+      "icon": "globe",
+      "details": {
+        "provider": "AWS",
+        "region": "us-east-1",
+        "environment": "Producción",
+        "deployment": "PaaS",
+        "scaling": "Multi-AZ"
+      },
+      "resourceCatalog": "cloud",
+      "resourceKind": "load-balancer",
+      "resourceService": "Application Load Balancer",
+      "parentGroupId": "public-zone"
+    },
+    {
+      "id": "storefront",
+      "type": "frontend",
+      "name": "Tienda web",
+      "description": "Interfaz de compra",
+      "x": 95,
+      "y": 645,
+      "width": 190,
+      "height": 150,
+      "icon": "react",
+      "details": {
+        "platform": "Web",
+        "framework": "React",
+        "baseUrl": "https://tienda.ejemplo.com",
+        "access": "Público",
+        "authMethod": "OAuth 2.0"
+      },
+      "parentGroupId": "public-zone"
+    },
+    {
+      "id": "api",
+      "type": "cloud",
+      "name": "API Gateway",
+      "description": "Entrada autenticada a los servicios",
+      "x": 620,
+      "y": 300,
+      "width": 205,
+      "height": 150,
+      "icon": "code",
+      "details": {
+        "provider": "AWS",
+        "region": "us-east-1",
+        "environment": "Producción",
+        "deployment": "PaaS",
+        "scaling": "Administrado"
+      },
+      "resourceService": "API Gateway",
+      "parentGroupId": "commerce-domain"
+    },
+    {
+      "id": "orders",
+      "type": "cloud",
+      "name": "Función de pedidos",
+      "description": "Valida y registra compras",
+      "x": 890,
+      "y": 300,
+      "width": 205,
+      "height": 150,
+      "icon": "settings",
+      "details": {
+        "provider": "AWS",
+        "region": "us-east-1",
+        "environment": "Producción",
+        "deployment": "Serverless",
+        "scaling": "Por demanda"
+      },
+      "resourceCatalog": "cloud",
+      "resourceKind": "serverless-function",
+      "resourceService": "Lambda",
+      "parentGroupId": "commerce-domain"
+    },
+    {
+      "id": "payments",
+      "type": "backend",
+      "name": "Servicio de pagos",
+      "description": "Autoriza y confirma pagos",
+      "x": 1160,
+      "y": 300,
+      "width": 205,
+      "height": 150,
+      "icon": "code",
+      "details": {
+        "basePath": "/payments",
+        "runtime": "Node.js"
+      },
+      "parentGroupId": "commerce-domain"
+    },
+    {
+      "id": "queue",
+      "type": "service",
+      "name": "Cola de pedidos",
+      "description": "Desacopla el procesamiento de compras",
+      "x": 620,
+      "y": 520,
+      "width": 205,
+      "height": 150,
+      "icon": "flow",
+      "details": {
+        "provider": "Amazon SQS",
+        "integration": "Cola / eventos"
+      },
+      "resourceCatalog": "cloud",
+      "resourceKind": "message-queue",
+      "resourceProvider": "AWS",
+      "resourceService": "SQS",
+      "parentGroupId": "commerce-domain"
+    },
+    {
+      "id": "worker",
+      "type": "cloud",
+      "name": "Procesador de pedidos",
+      "description": "Procesa pedidos en segundo plano",
+      "x": 890,
+      "y": 520,
+      "width": 205,
+      "height": 150,
+      "icon": "settings",
+      "details": {
+        "provider": "AWS",
+        "region": "us-east-1",
+        "environment": "Producción",
+        "deployment": "Serverless",
+        "scaling": "Por eventos"
+      },
+      "resourceCatalog": "cloud",
+      "resourceKind": "serverless-function",
+      "resourceService": "Lambda",
+      "parentGroupId": "commerce-domain"
+    },
+    {
+      "id": "monitoring",
+      "type": "service",
+      "name": "Monitoreo",
+      "description": "Métricas, registros y alertas",
+      "x": 1160,
+      "y": 520,
+      "width": 205,
+      "height": 150,
+      "icon": "settings",
+      "details": {
+        "provider": "Amazon CloudWatch",
+        "integration": "SDK"
+      },
+      "resourceProvider": "AWS",
+      "resourceService": "CloudWatch",
+      "parentGroupId": "commerce-domain"
+    },
+    {
+      "id": "orders-db",
+      "type": "database",
+      "name": "Base de pedidos",
+      "description": "Pedidos y estado de compra",
+      "x": 1450,
+      "y": 300,
+      "width": 205,
+      "height": 150,
+      "icon": "database",
+      "details": {
+        "engine": "PostgreSQL",
+        "databaseName": "orders",
+        "deployment": "Administrado",
+        "environment": "Producción",
+        "access": "Privado",
+        "authMethod": "mTLS"
+      },
+      "resourceCatalog": "cloud",
+      "resourceKind": "managed-database",
+      "resourceProvider": "AWS",
+      "resourceService": "RDS",
+      "parentGroupId": "data-domain"
+    },
+    {
+      "id": "inventory-db",
+      "type": "database",
+      "name": "Inventario",
+      "description": "Existencias y disponibilidad",
+      "x": 1710,
+      "y": 300,
+      "width": 205,
+      "height": 150,
+      "icon": "database",
+      "details": {
+        "engine": "DynamoDB",
+        "databaseName": "inventory",
+        "deployment": "Serverless",
+        "environment": "Producción",
+        "access": "Privado"
+      },
+      "resourceCatalog": "cloud",
+      "resourceKind": "managed-database",
+      "resourceProvider": "AWS",
+      "resourceService": "DynamoDB",
+      "parentGroupId": "data-domain"
+    },
+    {
+      "id": "object-storage",
+      "type": "cloud",
+      "name": "Archivos y facturas",
+      "description": "Objetos y documentos de compra",
+      "x": 1450,
+      "y": 520,
+      "width": 205,
+      "height": 150,
+      "icon": "storage",
+      "details": {
+        "provider": "AWS",
+        "region": "us-east-1",
+        "environment": "Producción",
+        "deployment": "PaaS",
+        "scaling": "Administrado"
+      },
+      "resourceCatalog": "cloud",
+      "resourceKind": "object-storage",
+      "resourceService": "S3",
+      "parentGroupId": "data-domain"
+    },
+    {
+      "id": "audit-queue",
+      "type": "service",
+      "name": "Eventos de auditoría",
+      "description": "Eventos para auditoría y notificaciones",
+      "x": 1710,
+      "y": 520,
+      "width": 205,
+      "height": 150,
+      "icon": "flow",
+      "details": {
+        "provider": "Amazon SNS",
+        "integration": "Cola / eventos"
+      },
+      "resourceCatalog": "cloud",
+      "resourceKind": "message-queue",
+      "resourceProvider": "AWS",
+      "resourceService": "SNS",
+      "parentGroupId": "data-domain"
+    },
+    {
+      "id": "public-subnet",
+      "type": "security",
+      "name": "Subred pública",
+      "description": "Recibe tráfico del balanceador",
+      "x": 570,
+      "y": 790,
+      "width": 205,
+      "height": 150,
+      "icon": "globe",
+      "resourceCatalog": "network",
+      "resourceKind": "subnet",
+      "resourceProvider": "AWS",
+      "resourceService": "Public subnet",
+      "parentGroupId": "vpc-zone"
+    },
+    {
+      "id": "private-subnet",
+      "type": "security",
+      "name": "Subred privada",
+      "description": "Aísla servicios y datos",
+      "x": 840,
+      "y": 790,
+      "width": 205,
+      "height": 150,
+      "icon": "security",
+      "resourceCatalog": "network",
+      "resourceKind": "subnet",
+      "resourceProvider": "AWS",
+      "resourceService": "Private subnet",
+      "parentGroupId": "vpc-zone"
+    },
+    {
+      "id": "route-table",
+      "type": "security",
+      "name": "Tabla de rutas",
+      "description": "Controla el tráfico entre subredes",
+      "x": 1110,
+      "y": 790,
+      "width": 205,
+      "height": 150,
+      "icon": "globe",
+      "resourceCatalog": "network",
+      "resourceKind": "route-table",
+      "resourceProvider": "AWS",
+      "resourceService": "VPC route table",
+      "parentGroupId": "vpc-zone"
+    },
+    {
+      "id": "internet-gateway",
+      "type": "security",
+      "name": "Gateway de Internet",
+      "description": "Conectividad controlada con Internet",
+      "x": 1380,
+      "y": 790,
+      "width": 205,
+      "height": 150,
+      "icon": "security",
+      "resourceCatalog": "network",
+      "resourceKind": "network-gateway",
+      "resourceProvider": "AWS",
+      "resourceService": "Internet Gateway",
+      "parentGroupId": "vpc-zone"
+    },
+    {
+      "id": "nat-gateway",
+      "type": "security",
+      "name": "Gateway NAT",
+      "description": "Salida de subredes privadas",
+      "x": 1650,
+      "y": 790,
+      "width": 205,
+      "height": 150,
+      "icon": "security",
+      "resourceCatalog": "network",
+      "resourceKind": "network-gateway",
+      "resourceProvider": "AWS",
+      "resourceService": "NAT Gateway",
+      "parentGroupId": "vpc-zone"
+    },
+    {
+      "id": "payment-provider",
+      "type": "service",
+      "name": "Proveedor de pagos",
+      "description": "Procesador externo de tarjetas",
+      "x": 2180,
+      "y": 440,
+      "width": 205,
+      "height": 150,
+      "icon": "key",
+      "details": {
+        "provider": "Proveedor externo",
+        "integration": "REST",
+        "authMethod": "API key"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-customer-dns",
+      "from": "customer",
+      "to": "dns",
+      "label": "HTTPS",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-dns-cdn",
+      "from": "dns",
+      "to": "cdn",
+      "label": "Resolución",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "edge-cdn-waf",
+      "from": "cdn",
+      "to": "waf",
+      "label": "HTTPS",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-waf-alb",
+      "from": "waf",
+      "to": "alb",
+      "label": "Inspección",
+      "connectionType": "auth"
+    },
+    {
+      "id": "edge-alb-storefront",
+      "from": "alb",
+      "to": "storefront",
+      "label": "HTTPS",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-storefront-api",
+      "from": "storefront",
+      "to": "api",
+      "label": "REST / JSON",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-api-orders",
+      "from": "api",
+      "to": "orders",
+      "label": "Invocación",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-orders-payments",
+      "from": "orders",
+      "to": "payments",
+      "label": "Autorizar pago",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-payments-provider",
+      "from": "payments",
+      "to": "payment-provider",
+      "label": "REST / TLS",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-orders-queue",
+      "from": "orders",
+      "to": "queue",
+      "label": "Publica pedido",
+      "connectionType": "events"
+    },
+    {
+      "id": "edge-queue-worker",
+      "from": "queue",
+      "to": "worker",
+      "label": "Consume evento",
+      "connectionType": "events"
+    },
+    {
+      "id": "edge-worker-orders-db",
+      "from": "worker",
+      "to": "orders-db",
+      "label": "SQL privado",
+      "connectionType": "data"
+    },
+    {
+      "id": "edge-orders-db",
+      "from": "orders",
+      "to": "orders-db",
+      "label": "SQL privado",
+      "connectionType": "data"
+    },
+    {
+      "id": "edge-orders-inventory",
+      "from": "orders",
+      "to": "inventory-db",
+      "label": "Consulta stock",
+      "connectionType": "data"
+    },
+    {
+      "id": "edge-worker-storage",
+      "from": "worker",
+      "to": "object-storage",
+      "label": "Guarda factura",
+      "connectionType": "files"
+    },
+    {
+      "id": "edge-queue-audit",
+      "from": "queue",
+      "to": "audit-queue",
+      "label": "Eventos",
+      "connectionType": "events"
+    },
+    {
+      "id": "edge-api-monitoring",
+      "from": "api",
+      "to": "monitoring",
+      "label": "Métricas",
+      "connectionType": "monitoring"
+    },
+    {
+      "id": "edge-private-route",
+      "from": "private-subnet",
+      "to": "route-table",
+      "label": "Rutas privadas",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "edge-route-nat",
+      "from": "route-table",
+      "to": "nat-gateway",
+      "label": "Salida NAT",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "edge-public-route",
+      "from": "public-subnet",
+      "to": "internet-gateway",
+      "label": "Ruta pública",
+      "connectionType": "dependency"
+    }
+  ],
+  "shapes": [
+    {
+      "id": "production-env",
+      "type": "rectangle",
+      "title": "Producción · AWS us-east-1",
+      "category": "environment",
+      "color": "#83aaff",
+      "x": 35,
+      "y": 35,
+      "width": 1960,
+      "height": 1050
+    },
+    {
+      "id": "public-zone",
+      "type": "rectangle",
+      "title": "Zona pública · perímetro",
+      "category": "trust-zone",
+      "color": "#ef8fba",
+      "x": 65,
+      "y": 145,
+      "width": 455,
+      "height": 850,
+      "parentGroupId": "production-env"
+    },
+    {
+      "id": "vpc-zone",
+      "type": "rectangle",
+      "title": "Zona privada · VPC",
+      "category": "trust-zone",
+      "color": "#54d6b0",
+      "x": 550,
+      "y": 145,
+      "width": 1415,
+      "height": 850,
+      "parentGroupId": "production-env"
+    },
+    {
+      "id": "commerce-domain",
+      "type": "rectangle",
+      "title": "Dominio · pedidos y pagos",
+      "category": "domain",
+      "color": "#65bfff",
+      "x": 590,
+      "y": 230,
+      "width": 815,
+      "height": 500,
+      "parentGroupId": "vpc-zone"
+    },
+    {
+      "id": "data-domain",
+      "type": "rectangle",
+      "title": "Dominio · datos y archivos",
+      "category": "domain",
+      "color": "#b4a9ff",
+      "x": 1425,
+      "y": 230,
+      "width": 510,
+      "height": 500,
+      "parentGroupId": "vpc-zone"
+    }
+  ],
+  "legend": []
+}

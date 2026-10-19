@@ -1,0 +1,596 @@
+{
+  "version": 2,
+  "dialect": "postgres",
+  "tables": [
+    {
+      "id": "product-category",
+      "name": "category",
+      "x": 80,
+      "y": 100,
+      "color": "#1684e8",
+      "fields": [
+        {
+          "id": "category-id",
+          "name": "id",
+          "type": "BIGINT",
+          "description": "Clave primaria generada por identidad",
+          "pk": true,
+          "nn": true,
+          "ai": true
+        },
+        {
+          "id": "category-code",
+          "name": "code",
+          "type": "VARCHAR(255)",
+          "description": "Codigo de categoria",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "category-name",
+          "name": "name_category",
+          "type": "VARCHAR(255)",
+          "description": "Nombre de la categoria",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        }
+      ]
+    },
+    {
+      "id": "product-product",
+      "name": "product",
+      "x": 390,
+      "y": 100,
+      "color": "#1684e8",
+      "fields": [
+        {
+          "id": "product-id",
+          "name": "id",
+          "type": "BIGINT",
+          "description": "Clave primaria generada por identidad",
+          "pk": true,
+          "nn": true,
+          "ai": true
+        },
+        {
+          "id": "product-code",
+          "name": "code",
+          "type": "VARCHAR(255)",
+          "description": "Codigo de producto usado por otros servicios como referencia",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "product-name",
+          "name": "name",
+          "type": "VARCHAR(255)",
+          "description": "Nombre del producto",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "product-price",
+          "name": "price",
+          "type": "DECIMAL(10,2)",
+          "description": "Precio; aproximado al double de Java",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "product-description",
+          "name": "description",
+          "type": "TEXT",
+          "description": "Descripcion del producto",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "product-stock",
+          "name": "stock",
+          "type": "INT",
+          "description": "Unidades disponibles",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "product-category-id",
+          "name": "id_category",
+          "type": "BIGINT",
+          "description": "FK a category.id; la entidad define ON DELETE CASCADE",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false,
+          "fk": true
+        }
+      ]
+    },
+    {
+      "id": "user-users",
+      "name": "usuaios",
+      "x": 800,
+      "y": 100,
+      "color": "#8548d9",
+      "fields": [
+        {
+          "id": "users-id",
+          "name": "id",
+          "type": "BIGINT",
+          "description": "Clave primaria generada por identidad",
+          "pk": true,
+          "nn": true,
+          "ai": true
+        },
+        {
+          "id": "users-code",
+          "name": "user_code",
+          "type": "VARCHAR(255)",
+          "description": "Codigo unico usado como referencia entre microservicios",
+          "pk": false,
+          "nn": true,
+          "ai": false,
+          "uq": true
+        },
+        {
+          "id": "users-name",
+          "name": "name",
+          "type": "VARCHAR(255)",
+          "description": "Nombre del usuario",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "users-email",
+          "name": "correo",
+          "type": "VARCHAR(255)",
+          "description": "Correo electronico",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "users-password",
+          "name": "password",
+          "type": "VARCHAR(255)",
+          "description": "Hash de contrasena; el diagrama no contiene credenciales",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "users-verified",
+          "name": "is_verified",
+          "type": "BOOLEAN",
+          "description": "Estado de verificacion",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "users-role",
+          "name": "rol",
+          "type": "VARCHAR(255)",
+          "description": "Rol asignado",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        }
+      ]
+    },
+    {
+      "id": "user-token-temp",
+      "name": "token_temp",
+      "x": 1110,
+      "y": 100,
+      "color": "#8548d9",
+      "fields": [
+        {
+          "id": "token-id",
+          "name": "id",
+          "type": "BIGINT",
+          "description": "Clave primaria generada por identidad",
+          "pk": true,
+          "nn": true,
+          "ai": true
+        },
+        {
+          "id": "token-hash",
+          "name": "token_hash",
+          "type": "VARCHAR(255)",
+          "description": "Hash del token temporal",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "token-type",
+          "name": "type_token",
+          "type": "VARCHAR(255)",
+          "description": "Enum almacenado como texto: VERIFY_EMAIL o RESET_PASSWORD",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "token-used",
+          "name": "is_used",
+          "type": "BOOLEAN",
+          "description": "Indica si el token ya fue utilizado",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "token-user-id",
+          "name": "user_id",
+          "type": "BIGINT",
+          "description": "FK a usuaios.id; obligatoria",
+          "pk": false,
+          "nn": true,
+          "ai": false,
+          "uq": false,
+          "fk": true
+        }
+      ]
+    },
+    {
+      "id": "cart-shopping",
+      "name": "shopping_cart",
+      "x": 80,
+      "y": 500,
+      "color": "#07865f",
+      "fields": [
+        {
+          "id": "cart-id",
+          "name": "id",
+          "type": "BIGINT",
+          "description": "Clave primaria generada por identidad",
+          "pk": true,
+          "nn": true,
+          "ai": true
+        },
+        {
+          "id": "cart-user-code",
+          "name": "user_code",
+          "type": "VARCHAR(255)",
+          "description": "Referencia por codigo al servicio de usuarios; no es FK entre bases",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "cart-code",
+          "name": "cart_code",
+          "type": "VARCHAR(255)",
+          "description": "Codigo del carrito",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "cart-status",
+          "name": "status",
+          "type": "INT",
+          "description": "Enum sin Enumerated: JPA lo almacena por ordinal (ACTIVE, CHECKED_OUT, CANCELED)",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "cart-created",
+          "name": "create_at",
+          "type": "DATE",
+          "description": "Fecha de creacion, no nula",
+          "pk": false,
+          "nn": true,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "cart-updated",
+          "name": "update_at",
+          "type": "DATE",
+          "description": "Fecha de actualizacion, no nula",
+          "pk": false,
+          "nn": true,
+          "ai": false,
+          "uq": false
+        }
+      ]
+    },
+    {
+      "id": "cart-item",
+      "name": "cart_item",
+      "x": 390,
+      "y": 500,
+      "color": "#07865f",
+      "fields": [
+        {
+          "id": "cart-item-id",
+          "name": "id",
+          "type": "BIGINT",
+          "description": "Clave primaria generada por identidad",
+          "pk": true,
+          "nn": true,
+          "ai": true
+        },
+        {
+          "id": "cart-item-product-code",
+          "name": "product_code",
+          "type": "VARCHAR(255)",
+          "description": "Codigo de producto; no es FK porque producto reside en otra base",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "cart-item-product-name",
+          "name": "product_name",
+          "type": "VARCHAR(255)",
+          "description": "Nombre del producto guardado como referencia",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "cart-item-unit-price",
+          "name": "unit_price",
+          "type": "DECIMAL(10,2)",
+          "description": "Precio unitario; aproximado al double de Java",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "cart-item-quantity",
+          "name": "quantity",
+          "type": "INT",
+          "description": "Cantidad solicitada",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "cart-item-subtotal",
+          "name": "sub_total",
+          "type": "DECIMAL(10,2)",
+          "description": "Subtotal de la linea; aproximado al double de Java",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "cart-item-cart-id",
+          "name": "cart_id",
+          "type": "BIGINT",
+          "description": "FK a shopping_cart.id",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false,
+          "fk": true
+        }
+      ]
+    },
+    {
+      "id": "order-orders",
+      "name": "orders",
+      "x": 800,
+      "y": 500,
+      "color": "#e87917",
+      "fields": [
+        {
+          "id": "orders-id",
+          "name": "id",
+          "type": "BIGINT",
+          "description": "Clave primaria generada por identidad",
+          "pk": true,
+          "nn": true,
+          "ai": true
+        },
+        {
+          "id": "orders-code",
+          "name": "order_code",
+          "type": "VARCHAR(255)",
+          "description": "Codigo del pedido",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "orders-user-code",
+          "name": "user_code",
+          "type": "VARCHAR(255)",
+          "description": "Referencia por codigo al servicio de usuarios; no es FK entre bases",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "orders-total",
+          "name": "total",
+          "type": "DECIMAL(10,2)",
+          "description": "Total del pedido; aproximado al double de Java",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "orders-status",
+          "name": "status",
+          "type": "VARCHAR(255)",
+          "description": "Enum almacenado como texto: CREATED, PENDING_PAYMENT, PAID, PAYMENT_FAILED o CANCELLED",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "orders-created",
+          "name": "create_at",
+          "type": "DATETIME",
+          "description": "Fecha y hora de creacion",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        }
+      ]
+    },
+    {
+      "id": "order-details",
+      "name": "order_details",
+      "x": 1110,
+      "y": 500,
+      "color": "#e87917",
+      "fields": [
+        {
+          "id": "order-details-id",
+          "name": "id",
+          "type": "BIGINT",
+          "description": "Clave primaria generada por identidad",
+          "pk": true,
+          "nn": true,
+          "ai": true
+        },
+        {
+          "id": "order-details-product-code",
+          "name": "product_code",
+          "type": "VARCHAR(255)",
+          "description": "Codigo de producto guardado como referencia; no es FK entre bases",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "order-details-product-name",
+          "name": "product_name",
+          "type": "VARCHAR(255)",
+          "description": "Nombre del producto guardado en el pedido",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "order-details-unit-price",
+          "name": "unit_price",
+          "type": "DECIMAL(10,2)",
+          "description": "Precio unitario; aproximado al double de Java",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "order-details-quantity",
+          "name": "quantity",
+          "type": "INT",
+          "description": "Cantidad solicitada",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "order-details-subtotal",
+          "name": "sub_total",
+          "type": "DECIMAL(10,2)",
+          "description": "Subtotal de la linea; aproximado al double de Java",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false
+        },
+        {
+          "id": "order-details-order-id",
+          "name": "order_id",
+          "type": "BIGINT",
+          "description": "FK a orders.id",
+          "pk": false,
+          "nn": false,
+          "ai": false,
+          "uq": false,
+          "fk": true
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "category-products",
+      "type": "1:N",
+      "sourceTable": "product-category",
+      "sourceField": "category-id",
+      "targetTable": "product-product",
+      "targetField": "product-category-id",
+      "onDelete": "CASCADE",
+      "onUpdate": "NO ACTION"
+    },
+    {
+      "id": "user-temporary-tokens",
+      "type": "1:N",
+      "sourceTable": "user-users",
+      "sourceField": "users-id",
+      "targetTable": "user-token-temp",
+      "targetField": "token-user-id",
+      "onDelete": "NO ACTION",
+      "onUpdate": "NO ACTION"
+    },
+    {
+      "id": "cart-items",
+      "type": "1:N",
+      "sourceTable": "cart-shopping",
+      "sourceField": "cart-id",
+      "targetTable": "cart-item",
+      "targetField": "cart-item-cart-id",
+      "onDelete": "NO ACTION",
+      "onUpdate": "NO ACTION"
+    },
+    {
+      "id": "order-line-items",
+      "type": "1:N",
+      "sourceTable": "order-orders",
+      "sourceField": "orders-id",
+      "targetTable": "order-details",
+      "targetField": "order-details-order-id",
+      "onDelete": "NO ACTION",
+      "onUpdate": "NO ACTION"
+    }
+  ]
+}

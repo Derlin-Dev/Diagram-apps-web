@@ -5,7 +5,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const TYPES = ['frontend', 'backend', 'database', 'service', 'cloud', 'user'];
+  const TYPES = ['frontend', 'backend', 'database', 'service', 'cloud', 'security', 'user'];
   const MAX_NODES = 300;
   const MAX_EDGES = 1000;
   const MAX_SHAPES = 300;
@@ -26,6 +26,11 @@
   const EDGE_DIRECTIONS = ['forward', 'reverse', 'both', 'none'];
   const EDGE_STYLES = ['solid', 'dashed', 'dotted'];
   const EDGE_TYPES = ['general', 'api', 'data', 'events', 'auth', 'files', 'monitoring', 'dependency', 'other'];
+  const RESOURCE_KINDS = [
+    'object-storage', 'serverless-function', 'virtual-machine', 'container-platform',
+    'managed-database', 'message-queue', 'route-table', 'firewall', 'subnet',
+    'network-gateway', 'load-balancer', 'dns-zone',
+  ];
   const DETAIL_FIELDS = {
     frontend: [
       { key: 'platform', label: 'Plataforma', type: 'select', options: ['', 'Web', 'Móvil', 'Escritorio', 'Web y móvil'] },
@@ -58,6 +63,10 @@
       { key: 'environment', label: 'Entorno', type: 'select', options: ENVIRONMENTS },
       { key: 'deployment', label: 'Tipo de despliegue', type: 'select', options: ['', 'VM', 'Contenedores', 'Kubernetes', 'Serverless', 'PaaS', 'Otro'] },
       { key: 'scaling', label: 'Escalado / capacidad', type: 'text', maxLength: 160, placeholder: 'Ej.: 2 instancias, autoescalado' },
+    ],
+    security: [
+      { key: 'scope', label: 'Alcance de red', type: 'select', options: ['', 'Público', 'Privado', 'Perimetral', 'Interno'] },
+      { key: 'controls', label: 'Controles / protocolos', type: 'text', maxLength: 160, placeholder: 'Ej.: TLS, reglas de firewall, VPN' },
     ],
     user: [
       { key: 'role', label: 'Rol', type: 'text', maxLength: 100, placeholder: 'Ej.: Administrador, cliente' },
@@ -272,6 +281,17 @@
           (typeof node.description !== 'string' || node.description.length > 240)) {
         throw new Error(`La descripción de "${node.name}" supera el límite de 240 caracteres`);
       }
+      if ((node.resourceKind !== undefined &&
+          (typeof node.resourceKind !== 'string' || !RESOURCE_KINDS.includes(node.resourceKind))) ||
+          (node.resourceCatalog !== undefined && !['cloud', 'network'].includes(node.resourceCatalog)) ||
+          (node.parentGroupId !== undefined &&
+          (typeof node.parentGroupId !== 'string' || !node.parentGroupId.trim() || node.parentGroupId.length > 100)) ||
+          (node.resourceProvider !== undefined &&
+          (typeof node.resourceProvider !== 'string' || node.resourceProvider.length > 100)) ||
+          (node.resourceService !== undefined &&
+          (typeof node.resourceService !== 'string' || node.resourceService.length > 100))) {
+        throw new Error(`Los datos de pertenencia o tipo de recurso de "${node.name}" no son válidos`);
+      }
       for (const coordinate of ['x', 'y']) {
         if (typeof node[coordinate] !== 'number' || !Number.isFinite(node[coordinate]) ||
             Math.abs(node[coordinate]) > MAX_COORDINATE) {
@@ -303,6 +323,11 @@
         icon,
         x: requireMetadata ? Math.round(node.x) : node.x,
         y: requireMetadata ? Math.round(node.y) : node.y,
+        ...(node.resourceKind ? { resourceKind: node.resourceKind } : {}),
+        ...(node.resourceCatalog ? { resourceCatalog: node.resourceCatalog } : {}),
+        ...(node.resourceProvider ? { resourceProvider: node.resourceProvider } : {}),
+        ...(node.resourceService ? { resourceService: node.resourceService } : {}),
+        ...(node.parentGroupId ? { parentGroupId: node.parentGroupId } : {}),
         ...size,
       };
     });
@@ -320,7 +345,12 @@
       }
       if (!['rectangle', 'ellipse'].includes(shape.type) ||
           typeof shape.title !== 'string' || shape.title.length > 80 ||
-          typeof shape.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(shape.color)) {
+          typeof shape.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(shape.color) ||
+          (shape.category !== undefined && !['general', 'domain', 'environment', 'trust-zone'].includes(shape.category)) ||
+          (shape.resourceCatalog !== undefined && !['cloud', 'network'].includes(shape.resourceCatalog)) ||
+          (shape.parentGroupId !== undefined &&
+          (typeof shape.parentGroupId !== 'string' || !shape.parentGroupId.trim() || shape.parentGroupId.length > 100)) ||
+          (shape.collapsed !== undefined && typeof shape.collapsed !== 'boolean')) {
         throw new Error(`Las propiedades de la figura ${index + 1} no son válidas`);
       }
       for (const coordinate of ['x', 'y']) {
@@ -343,11 +373,36 @@
         type: shape.type,
         title: shape.title,
         color: shape.color,
+        category: shape.category || 'general',
+        collapsed: shape.collapsed === true,
+        ...(shape.resourceCatalog ? { resourceCatalog: shape.resourceCatalog } : {}),
+        ...(shape.parentGroupId ? { parentGroupId: shape.parentGroupId } : {}),
         x: requireMetadata ? Math.round(shape.x) : shape.x,
         y: requireMetadata ? Math.round(shape.y) : shape.y,
         width: Math.round(shape.width),
         height: Math.round(shape.height),
       };
+    });
+
+    const shapeIds = new Map((data.shapes || []).map((shape, index) => [shape.id, shapes[index].id]));
+    [...nodes, ...shapes].forEach((entity, index) => {
+      const rawEntity = index < nodes.length ? data.nodes[index] : (data.shapes || [])[index - nodes.length];
+      const parentId = rawEntity.parentGroupId;
+      if (parentId === undefined) return;
+      if (!shapeIds.has(parentId) || shapeIds.get(parentId) === entity.id) {
+        throw new Error(`El contenedor de "${entity.name || entity.title}" no es válido`);
+      }
+      entity.parentGroupId = shapeIds.get(parentId);
+    });
+    const entityParents = new Map([...nodes, ...shapes].map(entity => [entity.id, entity.parentGroupId]));
+    entityParents.forEach((parentId, entityId) => {
+      const ancestors = new Set([entityId]);
+      let currentId = parentId;
+      while (currentId) {
+        if (ancestors.has(currentId)) throw new Error('La jerarquía de contenedores tiene una referencia circular');
+        ancestors.add(currentId);
+        currentId = entityParents.get(currentId);
+      }
     });
 
     const seenEdgeIds = new Set();
@@ -391,6 +446,25 @@
         }
         via = { x: edge.via.x, y: edge.via.y };
       }
+      let waypoints;
+      if (edge.waypoints !== undefined) {
+        if (!Array.isArray(edge.waypoints) || edge.waypoints.length > 50 ||
+            edge.waypoints.some(point => !point || typeof point !== 'object' || Array.isArray(point) ||
+              !Number.isFinite(point.x) || !Number.isFinite(point.y) ||
+              Math.abs(point.x) > MAX_COORDINATE || Math.abs(point.y) > MAX_COORDINATE)) {
+          throw new Error(`Los puntos de ruta de la conexión ${index + 1} no son válidos`);
+        }
+        waypoints = edge.waypoints.map(point => ({ x: Math.round(point.x), y: Math.round(point.y) }));
+      }
+      let labelPosition;
+      if (edge.labelPosition !== undefined) {
+        if (!edge.labelPosition || typeof edge.labelPosition !== 'object' || Array.isArray(edge.labelPosition) ||
+            !Number.isFinite(edge.labelPosition.x) || !Number.isFinite(edge.labelPosition.y) ||
+            Math.abs(edge.labelPosition.x) > MAX_COORDINATE || Math.abs(edge.labelPosition.y) > MAX_COORDINATE) {
+          throw new Error(`La posición de la etiqueta de la conexión ${index + 1} no es válida`);
+        }
+        labelPosition = { x: Math.round(edge.labelPosition.x), y: Math.round(edge.labelPosition.y) };
+      }
       const anchors = {};
       for (const [key, anchor] of [['fromAnchor', edge.fromAnchor], ['toAnchor', edge.toAnchor]]) {
         if (anchor === undefined) continue;
@@ -412,11 +486,36 @@
         style,
         connectionType,
         ...(via ? { via } : {}),
+        ...(waypoints ? { waypoints } : {}),
+        ...(labelPosition ? { labelPosition } : {}),
         ...anchors,
       };
     });
 
-    return { nodes, edges, shapes, nextId: id };
+    const legend = data.legend === undefined ? [] : data.legend;
+    if (!Array.isArray(legend) || legend.length > 30) {
+      throw new Error('La leyenda no es válida (máximo 30 entradas)');
+    }
+    const seenLegendIds = new Set();
+    const normalizedLegend = legend.map((entry, index) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+          typeof entry.id !== 'string' || !entry.id.trim() || entry.id.length > 100 ||
+          seenLegendIds.has(entry.id) ||
+          typeof entry.label !== 'string' || !entry.label.trim() || entry.label.length > 80 ||
+          typeof entry.description !== 'string' || entry.description.length > 160 ||
+          typeof entry.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(entry.color)) {
+        throw new Error(`La entrada ${index + 1} de la leyenda no es válida`);
+      }
+      seenLegendIds.add(entry.id);
+      return {
+        id: entry.id,
+        label: entry.label.trim(),
+        description: entry.description,
+        color: entry.color,
+      };
+    });
+
+    return { nodes, edges, shapes, legend: normalizedLegend, nextId: id };
   }
 
   return {
@@ -425,6 +524,7 @@
     EDGE_DIRECTIONS,
     EDGE_STYLES,
     EDGE_TYPES,
+    RESOURCE_KINDS,
     ENDPOINT_ACCESS,
     HTTP_METHODS,
     ICONS,

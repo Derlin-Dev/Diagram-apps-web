@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { iconifyParts, iconifyUrl, normalizeDiagram, searchIcons, searchIconify } = require('../js/diagram.js');
+const { createTemplate, listTemplates } = require('../js/templates.js');
 const sampleDiagram = require('./fixtures/sample-diagram.json');
 const exampleDiagram = require('../ejemplo-diagrama.json');
 
@@ -28,6 +29,145 @@ test('el JSON de ejemplo usa iconos válidos', () => {
     normalizeDiagram(exampleDiagram).nodes.map(node => node.icon),
     ['globe', 'code', 'database'],
   );
+});
+
+test('acepta componentes de Redes y Seguridad con sus detalles', () => {
+  const data = validDiagram();
+  data.nodes.push({
+    id: 'cmp-003',
+    type: 'security',
+    name: 'Redes y Seguridad',
+    description: 'Protección de perímetro',
+    details: { scope: 'Perimetral', controls: 'WAF y TLS' },
+    icon: 'security',
+    x: 420,
+    y: 180,
+  });
+
+  const node = normalizeDiagram(data).nodes[2];
+  assert.equal(node.type, 'security');
+  assert.equal(node.details.scope, 'Perimetral');
+  assert.equal(node.details.controls, 'WAF y TLS');
+
+  data.nodes[2].details.scope = 'Desconocido';
+  assert.throws(() => normalizeDiagram(data), /valor de "Alcance de red".*no es válido/);
+});
+
+test('conserva los tipos de recursos y remapea su contenedor al normalizar', () => {
+  const data = validDiagram();
+  data.nodes[0].resourceKind = 'object-storage';
+  data.nodes[0].resourceCatalog = 'cloud';
+  data.nodes[0].parentGroupId = 'group-cloud';
+  data.nodes[0].resourceProvider = 'AWS';
+  data.nodes[0].resourceService = 'S3';
+  data.shapes = [{
+    id: 'group-cloud',
+    type: 'rectangle',
+    title: 'Producción',
+    category: 'domain',
+    resourceCatalog: 'cloud',
+    color: '#65bfff',
+    x: 0,
+    y: 0,
+    width: 600,
+    height: 420,
+  }];
+
+  const diagram = normalizeDiagram(data);
+  assert.equal(diagram.nodes[0].resourceKind, 'object-storage');
+  assert.equal(diagram.nodes[0].resourceCatalog, 'cloud');
+  assert.equal(diagram.nodes[0].parentGroupId, diagram.shapes[0].id);
+  assert.equal(diagram.nodes[0].resourceProvider, 'AWS');
+  assert.equal(diagram.nodes[0].resourceService, 'S3');
+  assert.equal(diagram.shapes[0].resourceCatalog, 'cloud');
+
+  const standalone = validDiagram();
+  standalone.nodes[0].resourceKind = 'firewall';
+  standalone.nodes[0].resourceCatalog = 'network';
+  const standaloneDiagram = normalizeDiagram(standalone);
+  assert.equal(standaloneDiagram.nodes[0].resourceCatalog, 'network');
+  assert.equal(standaloneDiagram.nodes[0].parentGroupId, undefined);
+
+  data.nodes[0].resourceService = 'x'.repeat(101);
+  assert.throws(() => normalizeDiagram(data), /datos de pertenencia o tipo de recurso/);
+  data.nodes[0].resourceService = 'S3';
+  data.nodes[0].resourceCatalog = 'invalid';
+  assert.throws(() => normalizeDiagram(data), /datos de pertenencia o tipo de recurso/);
+  data.nodes[0].resourceCatalog = 'cloud';
+  data.nodes[0].resourceKind = 'unregistered-resource';
+  assert.throws(() => normalizeDiagram(data), /tipo de recurso.*no son válidos/);
+});
+
+test('rechaza referencias circulares entre contenedores', () => {
+  const data = validDiagram();
+  data.shapes = [
+    {
+      id: 'group-a', type: 'rectangle', title: 'A', category: 'general',
+      color: '#65bfff', x: 0, y: 0, width: 600, height: 420, parentGroupId: 'group-b',
+    },
+    {
+      id: 'group-b', type: 'rectangle', title: 'B', category: 'general',
+      color: '#65bfff', x: 0, y: 0, width: 500, height: 320, parentGroupId: 'group-a',
+    },
+  ];
+  assert.throws(() => normalizeDiagram(data), /referencia circular/);
+});
+
+test('conserva las categorías visuales y de límite de los grupos', () => {
+  for (const category of ['general', 'domain', 'environment', 'trust-zone']) {
+    const data = validDiagram();
+    data.shapes = [{
+      id: 'group-category',
+      type: 'rectangle',
+      title: 'Límite',
+      category,
+      color: '#65bfff',
+      x: 0,
+      y: 0,
+      width: 600,
+      height: 420,
+    }];
+    assert.equal(normalizeDiagram(data).shapes[0].category, category);
+  }
+});
+
+test('las plantillas de arquitectura se cargan desde JSON y son diagramas válidos', async () => {
+  const templates = listTemplates();
+  assert.deepEqual(templates.map(template => template.id), [
+    'web-app', 'microservices', 'serverless', 'commerce-cloud-production',
+  ]);
+  for (const template of templates) {
+    const diagram = normalizeDiagram(await createTemplate(template.id));
+    assert.ok(diagram.nodes.length >= 3);
+    assert.ok(diagram.edges.length >= 2);
+    assert.equal(new Set([
+      ...diagram.nodes.map(node => node.id),
+      ...diagram.edges.map(edge => edge.id),
+      ...diagram.shapes.map(shape => shape.id),
+    ]).size, diagram.nodes.length + diagram.edges.length + diagram.shapes.length);
+  }
+});
+
+test('la plantilla cloud compleja combina recursos y límites anidados', async () => {
+  const diagram = normalizeDiagram(await createTemplate('commerce-cloud-production'));
+  assert.equal(diagram.nodes.length, 22);
+  assert.equal(diagram.edges.length, 20);
+  assert.deepEqual(
+    new Set(diagram.shapes.map(shape => shape.category)),
+    new Set(['environment', 'trust-zone', 'domain']),
+  );
+  const shapesByTitle = new Map(diagram.shapes.map(shape => [shape.title, shape]));
+  const production = shapesByTitle.get('Producción · AWS us-east-1');
+  const privateZone = shapesByTitle.get('Zona privada · VPC');
+  const ordersDomain = shapesByTitle.get('Dominio · pedidos y pagos');
+  assert.equal(privateZone.parentGroupId, production.id);
+  assert.equal(ordersDomain.parentGroupId, privateZone.id);
+  const nodesByName = new Map(diagram.nodes.map(node => [node.name, node]));
+  assert.equal(nodesByName.get('Función de pedidos').parentGroupId, ordersDomain.id);
+  assert.equal(nodesByName.get('Base de pedidos').resourceKind, 'managed-database');
+  assert.equal(nodesByName.get('DNS público').resourceKind, 'dns-zone');
+  assert.ok(diagram.edges.some(edge => edge.connectionType === 'events'));
+  assert.ok(diagram.edges.some(edge => edge.connectionType === 'data'));
 });
 
 test('normaliza un diagrama ArqSketch y remapea ids de conexiones', () => {
@@ -89,6 +229,55 @@ test('conserva el punto de control desplazable de una conexión y valida sus coo
   data.edges[0].via.x = 48;
   data.edges[0].fromAnchor.offset = 1.1;
   assert.throws(() => normalizeDiagram(data), /punto de conexión.*no es válido/);
+});
+
+test('conserva y valida los puntos editables de una ruta recta', () => {
+  const data = validDiagram();
+  data.edges[0].waypoints = [{ x: 120, y: 140 }, { x: 180, y: 220 }];
+  assert.deepEqual(normalizeDiagram(data).edges[0].waypoints, data.edges[0].waypoints);
+
+  data.edges[0].waypoints[1].x = Infinity;
+  assert.throws(() => normalizeDiagram(data), /puntos de ruta.*no son válidos/);
+  data.edges[0].waypoints = Array.from({ length: 51 }, (_, index) => ({ x: index, y: index }));
+  assert.throws(() => normalizeDiagram(data), /puntos de ruta.*no son válidos/);
+});
+
+test('conserva las capas plegables, posiciones de etiquetas y leyenda personalizada', () => {
+  const data = validDiagram();
+  data.shapes = [{
+    id: 'grp-003',
+    type: 'rectangle',
+    title: 'Producción',
+    category: 'trust-zone',
+    collapsed: true,
+    color: '#65bfff',
+    x: 0,
+    y: 0,
+    width: 600,
+    height: 420,
+  }];
+  data.edges[0].labelPosition = { x: 180, y: 95 };
+  data.legend = [{
+    id: 'leg-001',
+    label: 'Datos sensibles',
+    description: 'Solo tráfico cifrado',
+    color: '#54d6b0',
+  }];
+
+  const diagram = normalizeDiagram(data);
+  assert.equal(diagram.shapes[0].category, 'trust-zone');
+  assert.equal(diagram.shapes[0].collapsed, true);
+  assert.deepEqual(diagram.edges[0].labelPosition, { x: 180, y: 95 });
+  assert.deepEqual(diagram.legend, data.legend);
+
+  data.shapes[0].category = 'unknown';
+  assert.throws(() => normalizeDiagram(data), /propiedades de la figura.*no son válidas/);
+  data.shapes[0].category = 'trust-zone';
+  data.edges[0].labelPosition.x = Infinity;
+  assert.throws(() => normalizeDiagram(data), /posición de la etiqueta.*no es válida/);
+  data.edges[0].labelPosition.x = 180;
+  data.legend[0].color = 'red';
+  assert.throws(() => normalizeDiagram(data), /entrada 1 de la leyenda no es válida/);
 });
 
 test('conserva detalles específicos y endpoints al importar un diagrama', () => {
@@ -247,6 +436,8 @@ test('normaliza figuras de agrupación junto con el diagrama', () => {
     type: 'ellipse',
     title: 'Servicios',
     color: '#65bfff',
+    category: 'general',
+    collapsed: false,
     x: -120,
     y: 40,
     width: 420,
@@ -256,6 +447,8 @@ test('normaliza figuras de agrupación junto con el diagrama', () => {
     type: 'rectangle',
     title: 'Datos',
     color: '#4fd7b7',
+    category: 'general',
+    collapsed: false,
     x: 360,
     y: 40,
     width: 320,
@@ -279,6 +472,8 @@ test('normaliza figuras de agrupación junto con el diagrama', () => {
     type: 'ellipse',
     title: 'Servicios',
     color: '#65bfff',
+    category: 'general',
+    collapsed: false,
     x: -120,
     y: 40,
     width: 420,
@@ -288,6 +483,8 @@ test('normaliza figuras de agrupación junto con el diagrama', () => {
     type: 'rectangle',
     title: 'Datos',
     color: '#4fd7b7',
+    category: 'general',
+    collapsed: false,
     x: 360,
     y: 40,
     width: 320,

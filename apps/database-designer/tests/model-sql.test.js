@@ -347,6 +347,7 @@ test('sanitizeModel conserva puntos de conexión movidos y el recorrido de la re
       sourceAnchor: { side: 'bottom', offset: 0.25 },
       targetAnchor: { side: 'top', offset: 0.75 },
       via: { x: 48, y: -32 },
+      waypoints: [{ x: 100, y: 80 }, { x: 120, y: 160 }],
     }],
   };
   let k = 1;
@@ -354,13 +355,67 @@ test('sanitizeModel conserva puntos de conexión movidos y el recorrido de la re
   assert.deepEqual(normalized.relations[0].sourceAnchor, { side: 'bottom', offset: 0.25 });
   assert.deepEqual(normalized.relations[0].targetAnchor, { side: 'top', offset: 0.75 });
   assert.deepEqual(normalized.relations[0].via, { x: 48, y: -32 });
+  assert.deepEqual(normalized.relations[0].waypoints, [{ x: 100, y: 80 }, { x: 120, y: 160 }]);
 
   source.relations[0].sourceAnchor.offset = 2;
   source.relations[0].via.x = Infinity;
+  source.relations[0].waypoints[0].y = Infinity;
   const sanitized = M.sanitizeModel(source, (prefix) => `${prefix}${k++}`);
   assert.equal(sanitized.relations[0].sourceAnchor, undefined);
   assert.equal(sanitized.relations[0].via, undefined);
-  assert.equal(sanitized.warnings.length, 2);
+  assert.equal(sanitized.relations[0].waypoints, undefined);
+  assert.equal(sanitized.warnings.length, 3);
+});
+
+test('relationPath aplica líneas rectas globales e ignora el recorrido guardado', () => {
+  const path = M.relationPath(
+    { x: 10, y: 20 },
+    { x: 100, y: 80 },
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 12, y: 8 },
+    'straight',
+    [{ x: 20, y: 20 }, { x: 20, y: 80 }],
+  );
+  assert.equal(path, 'M 10 20 L 20 20 L 20 80 L 100 80');
+});
+
+test('orthogonalRoute crea recorridos predeterminados sin segmentos diagonales', () => {
+  const points = M.orthogonalRoute(
+    { x: 10, y: 20 },
+    { x: 100, y: 80 },
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+  );
+  assert.equal(points[0].x, 10);
+  assert.equal(points[0].y, 20);
+  assert.equal(points.at(-1).x, 100);
+  assert.equal(points.at(-1).y, 80);
+  points.slice(1).forEach((point, index) => {
+    const previous = points[index];
+    assert.ok(point.x === previous.x || point.y === previous.y);
+  });
+});
+
+test('relationPath conserva las curvas y sus puntos de control', () => {
+  const curved = M.relationPath(
+    { x: 10, y: 20 },
+    { x: 100, y: 80 },
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    undefined,
+    'curved',
+  );
+  assert.match(curved, /^M 10 20 C /);
+  const routed = M.relationPath(
+    { x: 10, y: 20 },
+    { x: 100, y: 80 },
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 12, y: 8 },
+    'curved',
+  );
+  assert.equal(routed, 'M 10 20 Q 79 66 100 80');
 });
 
 test('validateModel detecta duplicados, tablas sin PK y FK a campos no únicos', () => {

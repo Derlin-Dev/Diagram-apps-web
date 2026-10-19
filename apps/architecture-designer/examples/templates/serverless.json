@@ -1,0 +1,99 @@
+{
+  "app": "ArqSketch",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "web-1",
+      "type": "frontend",
+      "name": "Aplicación web",
+      "x": 70,
+      "y": 190
+    },
+    {
+      "id": "api-1",
+      "type": "cloud",
+      "name": "API gestionada",
+      "x": 370,
+      "y": 190
+    },
+    {
+      "id": "fn-1",
+      "type": "backend",
+      "name": "Función de negocio",
+      "x": 700,
+      "y": 190
+    },
+    {
+      "id": "db-1",
+      "type": "database",
+      "name": "Base serverless",
+      "x": 1010,
+      "y": 90
+    },
+    {
+      "id": "storage-1",
+      "type": "cloud",
+      "name": "Almacenamiento de archivos",
+      "x": 1010,
+      "y": 330
+    },
+    {
+      "id": "service-1",
+      "type": "service",
+      "name": "Correo",
+      "x": 1320,
+      "y": 190
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "from": "web-1",
+      "to": "api-1",
+      "label": "HTTPS",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-2",
+      "from": "api-1",
+      "to": "fn-1",
+      "label": "Invocación",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-3",
+      "from": "fn-1",
+      "to": "db-1",
+      "label": "Datos",
+      "connectionType": "data"
+    },
+    {
+      "id": "edge-4",
+      "from": "fn-1",
+      "to": "storage-1",
+      "label": "Archivos",
+      "connectionType": "files"
+    },
+    {
+      "id": "edge-5",
+      "from": "fn-1",
+      "to": "service-1",
+      "label": "SMTP",
+      "connectionType": "api"
+    }
+  ],
+  "shapes": [
+    {
+      "id": "grp-1",
+      "type": "rectangle",
+      "title": "Plataforma cloud",
+      "category": "environment",
+      "color": "#83aaff",
+      "x": 340,
+      "y": 45,
+      "width": 1010,
+      "height": 470
+    }
+  ],
+  "legend": []
+}

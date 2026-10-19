@@ -1,0 +1,717 @@
+{
+  "app": "ArqSketch",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "cmp-001",
+      "type": "user",
+      "name": "Pasajero",
+      "description": "Persona que solicita viajes y paga desde la app (Protocolo de autenticación: OAuth2 / OIDC)",
+      "details": {
+        "role": "Pasajero",
+        "accessLevel": "Usuario",
+        "authMethod": "OAuth 2.0",
+        "identityProvider": "Keycloak"
+      },
+      "icon": "user",
+      "x": 70,
+      "y": 70
+    },
+    {
+      "id": "cmp-002",
+      "type": "user",
+      "name": "Conductor",
+      "description": "Persona que acepta viajes y reporta su ubicación en tiempo real (Nivel de acceso: Usuario verificado · Protocolo de autenticación: OAuth2 / OIDC)",
+      "details": {
+        "role": "Conductor",
+        "accessLevel": "Usuario",
+        "authMethod": "OAuth 2.0",
+        "identityProvider": "Keycloak"
+      },
+      "icon": "user",
+      "x": 70,
+      "y": 260
+    },
+    {
+      "id": "cmp-003",
+      "type": "user",
+      "name": "Administrador",
+      "description": "Operador que supervisa viajes, tarifas y disputas de pago (Protocolo de autenticación: OIDC + MFA)",
+      "details": {
+        "role": "Operaciones",
+        "accessLevel": "Administrador",
+        "authMethod": "OAuth 2.0",
+        "identityProvider": "Keycloak"
+      },
+      "icon": "user",
+      "x": 70,
+      "y": 450
+    },
+    {
+      "id": "cmp-004",
+      "type": "frontend",
+      "name": "App Pasajero",
+      "description": "Aplicación móvil para pedir viajes, ver al conductor en el mapa y pagar (Protocolo de autenticación: JWT (Bearer))",
+      "details": {
+        "platform": "Móvil",
+        "framework": "Flutter",
+        "baseUrl": "https://api.rideflow.example/v1",
+        "access": "Público",
+        "authMethod": "JWT / Bearer token"
+      },
+      "icon": "app",
+      "x": 370,
+      "y": 70
+    },
+    {
+      "id": "cmp-005",
+      "type": "frontend",
+      "name": "App Conductor",
+      "description": "Aplicación móvil para recibir ofertas de viaje y enviar geolocalización (Protocolo de autenticación: JWT (Bearer))",
+      "details": {
+        "platform": "Móvil",
+        "framework": "Kotlin / Jetpack Compose",
+        "baseUrl": "https://api.rideflow.example/v1",
+        "access": "Privado",
+        "authMethod": "JWT / Bearer token"
+      },
+      "icon": "app",
+      "x": 370,
+      "y": 260
+    },
+    {
+      "id": "cmp-006",
+      "type": "frontend",
+      "name": "Panel Admin",
+      "description": "Consola web para operaciones, soporte y reportes (Protocolo de autenticación: OIDC + MFA)",
+      "details": {
+        "platform": "Web",
+        "framework": "React + Vite",
+        "baseUrl": "https://admin.rideflow.example",
+        "access": "Privado",
+        "authMethod": "OAuth 2.0"
+      },
+      "icon": "globe",
+      "x": 370,
+      "y": 450
+    },
+    {
+      "id": "cmp-007",
+      "type": "backend",
+      "name": "API Gateway",
+      "description": "Punto de entrada único: enrutamiento, validación de JWT y rate limiting (Endpoints: ANY /trips/**, ANY /matching/**, ANY /pricing/**, ANY /payments/**)",
+      "details": {
+        "basePath": "/v1",
+        "runtime": "Kong Gateway"
+      },
+      "icon": "api",
+      "x": 670,
+      "y": 260
+    },
+    {
+      "id": "cmp-008",
+      "type": "service",
+      "name": "Keycloak",
+      "description": "Proveedor de identidad: emite y valida tokens, roles y MFA (Protocolo de autenticación: Client credentials · Integración: OIDC / OAuth2)",
+      "details": {
+        "provider": "Keycloak",
+        "integration": "REST",
+        "baseUrl": "https://auth.rideflow.example",
+        "authMethod": "OAuth 2.0"
+      },
+      "icon": "security",
+      "x": 670,
+      "y": 70
+    },
+    {
+      "id": "cmp-009",
+      "type": "backend",
+      "name": "Trip Service",
+      "description": "Ciclo de vida del viaje: solicitado, asignado, en curso, finalizado (Endpoints: POST /trips, GET /trips/{id}, PATCH /trips/{id}/status, GET /trips/history)",
+      "details": {
+        "basePath": "/v1/trips",
+        "runtime": "NestJS (Node.js 20)"
+      },
+      "icon": "app",
+      "x": 970,
+      "y": 70
+    },
+    {
+      "id": "cmp-010",
+      "type": "backend",
+      "name": "Matching Service",
+      "description": "Busca el conductor más cercano usando índices geoespaciales (Endpoints: POST /matching/requests, PUT /matching/drivers/{id}/location, GET /matching/drivers/nearby)",
+      "details": {
+        "basePath": "/v1/matching",
+        "runtime": "Go 1.22"
+      },
+      "icon": "code",
+      "x": 970,
+      "y": 260
+    },
+    {
+      "id": "cmp-011",
+      "type": "backend",
+      "name": "Pricing Service",
+      "description": "Calcula tarifa estimada y multiplicador por demanda (surge) (Endpoints: POST /pricing/estimate, GET /pricing/surge?zone={id})",
+      "details": {
+        "basePath": "/v1/pricing",
+        "runtime": "Python 3.12 / FastAPI"
+      },
+      "icon": "code",
+      "x": 970,
+      "y": 450
+    },
+    {
+      "id": "cmp-012",
+      "type": "backend",
+      "name": "Payment Service",
+      "description": "Cobros, reembolsos y conciliación con la pasarela de pago (Endpoints: POST /payments/charge, POST /payments/{id}/refund, GET /payments/{id})",
+      "details": {
+        "basePath": "/v1/payments",
+        "runtime": "Java 21 / Spring Boot"
+      },
+      "icon": "payment",
+      "x": 970,
+      "y": 640
+    },
+    {
+      "id": "cmp-013",
+      "type": "backend",
+      "name": "Notification Service",
+      "description": "Consume eventos y envía push y SMS a pasajeros y conductores (Endpoints: GET /notifications/health)",
+      "details": {
+        "basePath": "/v1/notifications",
+        "runtime": "Node.js 20 / Fastify"
+      },
+      "icon": "mail",
+      "x": 1570,
+      "y": 450
+    },
+    {
+      "id": "cmp-014",
+      "type": "database",
+      "name": "trips_DB",
+      "description": "Viajes, estados y rutas; propiedad exclusiva de Trip Service (Autenticación: IAM + usuario de servicio · Despliegue: Administrado (Amazon RDS))",
+      "details": {
+        "engine": "PostgreSQL 16",
+        "databaseName": "trips_db",
+        "deployment": "Administrado",
+        "environment": "Producción",
+        "access": "Privado",
+        "authMethod": "Otro"
+      },
+      "icon": "database",
+      "x": 1270,
+      "y": 70
+    },
+    {
+      "id": "cmp-015",
+      "type": "database",
+      "name": "Redis Geo",
+      "description": "Posición de conductores (GEO) y caché de multiplicadores de tarifa (Autenticación: AUTH + TLS · Despliegue: Administrado (ElastiCache))",
+      "details": {
+        "engine": "Redis 7",
+        "databaseName": "geo + surge cache",
+        "deployment": "Administrado",
+        "environment": "Producción",
+        "access": "Privado",
+        "authMethod": "Otro"
+      },
+      "icon": "redis",
+      "x": 1270,
+      "y": 260
+    },
+    {
+      "id": "cmp-016",
+      "type": "database",
+      "name": "payments_DB",
+      "description": "Transacciones y registros de conciliación (Autenticación: IAM + usuario de servicio · Despliegue: Administrado (Amazon RDS))",
+      "details": {
+        "engine": "PostgreSQL 16",
+        "databaseName": "payments_db",
+        "deployment": "Administrado",
+        "environment": "Producción",
+        "access": "Privado",
+        "authMethod": "Otro"
+      },
+      "icon": "database",
+      "x": 1270,
+      "y": 640
+    },
+    {
+      "id": "cmp-017",
+      "type": "service",
+      "name": "Kafka",
+      "description": "Bus de eventos: trip.events, payment.events, driver.assigned (Autenticación: SASL / SCRAM · Integración: Pub/Sub de eventos)",
+      "details": {
+        "provider": "Apache Kafka (Amazon MSK)",
+        "integration": "Cola / eventos",
+        "baseUrl": "kafka.internal:9092",
+        "authMethod": "Otro"
+      },
+      "icon": "server",
+      "x": 1270,
+      "y": 450
+    },
+    {
+      "id": "cmp-018",
+      "type": "service",
+      "name": "Stripe",
+      "description": "Pasarela de pago externa (Autenticación: API Key secreta · Integración: API REST + webhooks)",
+      "details": {
+        "provider": "Stripe",
+        "integration": "Webhook",
+        "baseUrl": "https://api.stripe.com",
+        "authMethod": "Otro"
+      },
+      "icon": "payment",
+      "x": 970,
+      "y": 830
+    },
+    {
+      "id": "cmp-019",
+      "type": "database",
+      "name": "notifications_DB",
+      "description": "Plantillas, preferencias y bitácora de envíos (Autenticación: SCRAM · Despliegue: Administrado (Atlas))",
+      "details": {
+        "engine": "MongoDB 7",
+        "databaseName": "notifications_db",
+        "deployment": "Administrado",
+        "environment": "Producción",
+        "access": "Privado",
+        "authMethod": "Otro"
+      },
+      "icon": "database",
+      "x": 1570,
+      "y": 260
+    },
+    {
+      "id": "cmp-020",
+      "type": "service",
+      "name": "Firebase Cloud Messaging",
+      "description": "Entrega de notificaciones push a Android e iOS (Autenticación: Service account · Integración: API HTTP v1)",
+      "details": {
+        "provider": "Google Firebase",
+        "integration": "REST",
+        "baseUrl": "https://fcm.googleapis.com",
+        "authMethod": "Otro"
+      },
+      "icon": "mail",
+      "x": 1870,
+      "y": 450
+    },
+    {
+      "id": "cmp-021",
+      "type": "service",
+      "name": "Twilio SMS",
+      "description": "Envío de SMS como respaldo cuando el push falla (Autenticación: Account SID + Auth Token · Integración: API REST)",
+      "details": {
+        "provider": "Twilio",
+        "integration": "REST",
+        "baseUrl": "https://api.twilio.com",
+        "authMethod": "Otro"
+      },
+      "icon": "mail",
+      "x": 1870,
+      "y": 640
+    },
+    {
+      "id": "cmp-022",
+      "type": "service",
+      "name": "Prometheus + Grafana",
+      "description": "Métricas, dashboards y alertas de los servicios (Autenticación: SSO (Keycloak) · Integración: Scrape de /metrics)",
+      "details": {
+        "provider": "Prometheus / Grafana",
+        "integration": "REST",
+        "baseUrl": "https://grafana.rideflow.example",
+        "authMethod": "Otro"
+      },
+      "icon": "server",
+      "x": 670,
+      "y": 640
+    },
+    {
+      "id": "cmp-023",
+      "type": "cloud",
+      "name": "AWS EKS",
+      "description": "Clúster Kubernetes donde corren los microservicios",
+      "details": {
+        "provider": "AWS",
+        "region": "us-east-1",
+        "environment": "Producción",
+        "deployment": "Kubernetes",
+        "scaling": "HPA por CPU y latencia (3-12 réplicas)"
+      },
+      "icon": "docker",
+      "x": 370,
+      "y": 640
+    },
+    {
+      "id": "cmp-024",
+      "type": "cloud",
+      "name": "AWS CloudFront + WAF",
+      "description": "CDN y firewall de aplicaciones frente al API Gateway y el panel admin (Despliegue: Administrado)",
+      "details": {
+        "provider": "AWS",
+        "region": "Global",
+        "environment": "Producción",
+        "deployment": "Otro",
+        "scaling": "Automático"
+      },
+      "icon": "globe",
+      "x": 670,
+      "y": 450
+    }
+  ],
+  "edges": [
+    {
+      "id": "con-029",
+      "from": "cmp-001",
+      "to": "cmp-004",
+      "label": "Usa",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "general"
+    },
+    {
+      "id": "con-030",
+      "from": "cmp-002",
+      "to": "cmp-005",
+      "label": "Usa",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "general"
+    },
+    {
+      "id": "con-031",
+      "from": "cmp-003",
+      "to": "cmp-006",
+      "label": "Usa",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "general"
+    },
+    {
+      "id": "con-032",
+      "from": "cmp-004",
+      "to": "cmp-007",
+      "label": "REST / WebSocket",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-033",
+      "from": "cmp-005",
+      "to": "cmp-007",
+      "label": "REST / WebSocket",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-034",
+      "from": "cmp-006",
+      "to": "cmp-024",
+      "label": "HTTPS",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-035",
+      "from": "cmp-024",
+      "to": "cmp-007",
+      "label": "Tráfico filtrado",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-036",
+      "from": "cmp-007",
+      "to": "cmp-008",
+      "label": "Valida JWT (OIDC)",
+      "direction": "both",
+      "style": "dashed",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-037",
+      "from": "cmp-007",
+      "to": "cmp-009",
+      "label": "/trips/**",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-038",
+      "from": "cmp-007",
+      "to": "cmp-010",
+      "label": "/matching/**",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-039",
+      "from": "cmp-007",
+      "to": "cmp-011",
+      "label": "/pricing/**",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-040",
+      "from": "cmp-007",
+      "to": "cmp-012",
+      "label": "/payments/**",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-041",
+      "from": "cmp-009",
+      "to": "cmp-011",
+      "label": "Estimar tarifa (gRPC)",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-042",
+      "from": "cmp-009",
+      "to": "cmp-010",
+      "label": "Solicita asignación",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-043",
+      "from": "cmp-009",
+      "to": "cmp-014",
+      "label": "PostgreSQL",
+      "direction": "both",
+      "style": "solid",
+      "connectionType": "data"
+    },
+    {
+      "id": "con-044",
+      "from": "cmp-010",
+      "to": "cmp-015",
+      "label": "Índice GEO",
+      "direction": "both",
+      "style": "solid",
+      "connectionType": "data"
+    },
+    {
+      "id": "con-045",
+      "from": "cmp-011",
+      "to": "cmp-015",
+      "label": "Caché de surge",
+      "direction": "both",
+      "style": "dashed",
+      "connectionType": "data"
+    },
+    {
+      "id": "con-046",
+      "from": "cmp-012",
+      "to": "cmp-016",
+      "label": "PostgreSQL",
+      "direction": "both",
+      "style": "solid",
+      "connectionType": "data"
+    },
+    {
+      "id": "con-047",
+      "from": "cmp-012",
+      "to": "cmp-018",
+      "label": "Cobros y reembolsos",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-048",
+      "from": "cmp-018",
+      "to": "cmp-012",
+      "label": "Webhooks de estado",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "events"
+    },
+    {
+      "id": "con-049",
+      "from": "cmp-009",
+      "to": "cmp-017",
+      "label": "Publica trip.events",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "events"
+    },
+    {
+      "id": "con-050",
+      "from": "cmp-010",
+      "to": "cmp-017",
+      "label": "Publica driver.assigned",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "events"
+    },
+    {
+      "id": "con-051",
+      "from": "cmp-012",
+      "to": "cmp-017",
+      "label": "Publica payment.events",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "events"
+    },
+    {
+      "id": "con-052",
+      "from": "cmp-017",
+      "to": "cmp-013",
+      "label": "Consume eventos",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "events"
+    },
+    {
+      "id": "con-053",
+      "from": "cmp-013",
+      "to": "cmp-019",
+      "label": "MongoDB",
+      "direction": "both",
+      "style": "solid",
+      "connectionType": "data"
+    },
+    {
+      "id": "con-054",
+      "from": "cmp-013",
+      "to": "cmp-020",
+      "label": "Push",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-055",
+      "from": "cmp-013",
+      "to": "cmp-021",
+      "label": "SMS (respaldo)",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "api"
+    },
+    {
+      "id": "con-056",
+      "from": "cmp-022",
+      "to": "cmp-007",
+      "label": "Scrape /metrics",
+      "direction": "reverse",
+      "style": "dashed",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "con-057",
+      "from": "cmp-022",
+      "to": "cmp-009",
+      "label": "Scrape /metrics",
+      "direction": "reverse",
+      "style": "dashed",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "con-058",
+      "from": "cmp-022",
+      "to": "cmp-010",
+      "label": "Scrape /metrics",
+      "direction": "reverse",
+      "style": "dashed",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "con-059",
+      "from": "cmp-022",
+      "to": "cmp-012",
+      "label": "Scrape /metrics",
+      "direction": "reverse",
+      "style": "dashed",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "con-060",
+      "from": "cmp-023",
+      "to": "cmp-022",
+      "label": "Hospeda",
+      "direction": "none",
+      "style": "dotted",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "con-061",
+      "from": "cmp-023",
+      "to": "cmp-007",
+      "label": "Ejecuta pods",
+      "direction": "none",
+      "style": "dotted",
+      "connectionType": "dependency"
+    }
+  ],
+  "shapes": [
+    {
+      "id": "grp-025",
+      "type": "rectangle",
+      "title": "Clientes y borde",
+      "color": "#5ea8f0",
+      "category": "general",
+      "collapsed": false,
+      "x": 40,
+      "y": 30,
+      "width": 700,
+      "height": 560
+    },
+    {
+      "id": "grp-026",
+      "type": "rectangle",
+      "title": "Microservicios (AWS EKS)",
+      "color": "#7bc47f",
+      "category": "general",
+      "collapsed": false,
+      "x": 940,
+      "y": 30,
+      "width": 280,
+      "height": 730
+    },
+    {
+      "id": "grp-027",
+      "type": "rectangle",
+      "title": "Datos y mensajería",
+      "color": "#f0a35e",
+      "category": "general",
+      "collapsed": false,
+      "x": 1240,
+      "y": 30,
+      "width": 280,
+      "height": 730
+    },
+    {
+      "id": "grp-028",
+      "type": "rectangle",
+      "title": "Proveedores de notificación",
+      "color": "#b58be0",
+      "category": "general",
+      "collapsed": false,
+      "x": 1840,
+      "y": 410,
+      "width": 300,
+      "height": 330
+    }
+  ],
+  "legend": []
+}

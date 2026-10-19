@@ -13,6 +13,7 @@
     <div class="top-actions">
       <a class="home-link" href="../../index.html">← Inicio</a>
       <button class="btn" id="newBtn">＋ Nuevo</button>
+      <button class="btn" id="versionsBtn">Versiones</button>
       <button class="btn" id="openBtn">↥ Abrir JSON</button>
       <button class="btn" id="importSqlBtn">⇧ Importar SQL</button>
       <button class="btn" id="saveBtn">↓ Guardar JSON</button>
@@ -34,7 +35,7 @@
       <button class="tool" id="addTableBtn"><span>▦</span> Tabla nueva</button>
       <button class="tool" id="relationModeBtn"><span>↔</span> Crear relación</button>
       <button class="tool" id="templatesBtn"><span>▤</span> Plantillas</button>
-      <p class="hint" id="modeHint">Arrastra las tablas para organizarlas. Haz clic en una relación para ajustar sus extremos y recorrido. Espacio + arrastre desplaza el lienzo.</p>
+      <p class="hint" id="modeHint">Arrastra las tablas para organizarlas. Al seleccionar una tabla se resaltan sus relaciones; haz clic en una para editarla o arrastra sus puntos. Espacio + arrastre desplaza el lienzo.</p>
       <div class="side-divider"></div>
       <h2>Tipos de relación</h2>
       <div class="type-chip"><b>1 : 1</b><span>Uno a uno</span></div>
@@ -58,6 +59,12 @@
         <option value="mysql">MySQL</option><option value="postgres">PostgreSQL</option><option value="sqlite">SQLite</option>
       </select>
       <p class="hint">El SQL generado se adapta al motor seleccionado. Revisa el resultado antes de ejecutarlo.</p>
+      <label class="field-label" for="relationLineStyle">Estilo de las conexiones</label>
+      <select id="relationLineStyle" class="control">
+        <option value="curved">Curvas</option>
+        <option value="straight">Rectas (90°)</option>
+      </select>
+      <p class="hint">Se aplica a todas las relaciones y al SVG. Selecciona una línea y arrastra sus puntos; haz doble clic sobre ella para agregar un punto de ruta.</p>
     </aside>
     <div class="resize-handle vertical" data-side="left" aria-label="Redimensionar panel izquierdo" title="Ajustar ancho del panel izquierdo"></div>
 
@@ -86,15 +93,42 @@
             <div class="canvas-actions">
               <button class="icon-btn" id="undoBtn" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>↶</button>
               <button class="icon-btn" id="redoBtn" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled>↷</button>
-              <button class="icon-btn" id="organizeTablesBtn" title="Organizar todas las tablas" aria-label="Organizar todas las tablas">▦</button>
-              <button class="icon-btn" id="exportSvgBtn" title="Exportar diagrama como SVG" aria-label="Exportar diagrama como SVG">SVG</button>
-              <button class="icon-btn" id="exportPngBtn" title="Exportar diagrama como PNG" aria-label="Exportar diagrama como PNG">PNG</button>
               <button class="icon-btn" id="zoomOut" title="Reducir zoom" aria-label="Reducir zoom">−</button>
               <span id="zoomLabel" title="Clic para volver al 100%">100%</span>
               <button class="icon-btn" id="zoomIn" title="Aumentar zoom" aria-label="Aumentar zoom">＋</button>
-              <button class="icon-btn" id="centerSelectedBtn" title="Centrar tabla seleccionada" aria-label="Centrar tabla seleccionada">◎</button>
+              <button class="icon-btn" id="centerSelectedBtn" title="Centrar tabla o selección" aria-label="Centrar selección">◎</button>
               <button class="icon-btn" id="fitBtn" title="Ajustar a la pantalla" aria-label="Ajustar a la pantalla">⛶</button>
+              <select class="control compact-control" id="layoutSelect" aria-label="Tipo de autoorganización">
+                <option value="dependencies">Dependencias</option><option value="horizontal">Izquierda a derecha</option><option value="layers">Por capas</option><option value="radial">Radial</option>
+              </select>
+              <button class="icon-btn" id="organizeTablesBtn" title="Autoorganizar todas las tablas o la selección" aria-label="Autoorganizar tablas">▦</button>
+              <button class="icon-btn" id="alignTablesBtn" title="Alinear y distribuir la selección" aria-label="Alinear y distribuir">↔</button>
+              <button class="icon-btn" id="gridBtn" title="Mostrar u ocultar cuadrícula" aria-label="Cuadrícula" aria-pressed="true">▦</button>
+              <label class="snap-toggle" title="Ajustar tablas a la cuadrícula"><input type="checkbox" id="snapToGrid"> Ajustar</label>
+              <button class="icon-btn" id="miniMapToggleBtn" title="Mostrar u ocultar minimapa" aria-pressed="false">Mapa</button>
+              <button class="icon-btn" id="batchRelationsBtn" title="Editar relaciones seleccionadas" disabled>Lote</button>
+              <button class="icon-btn" id="exportSvgBtn" title="Exportar diagrama como SVG" aria-label="Exportar diagrama como SVG">SVG</button>
+              <button class="icon-btn" id="exportPngBtn" title="Exportar diagrama como PNG" aria-label="Exportar diagrama como PNG">PNG</button>
+              <button class="icon-btn" id="exportPdfBtn" title="Imprimir o guardar diagrama como PDF" aria-label="Exportar diagrama como PDF">PDF</button>
+              <button class="icon-btn" id="presentBtn" title="Presentar tablas progresivamente" aria-label="Presentar diagrama">▶</button>
             </div>
+          </div>
+          <div class="selection-actions" id="selectionActions" aria-label="Acciones para selección de tablas" hidden>
+            <span id="selectionCount">0 seleccionadas</span>
+            <button type="button" data-selection-action="align-left">Izquierda</button>
+            <button type="button" data-selection-action="align-center-x">Centro X</button>
+            <button type="button" data-selection-action="align-right">Derecha</button>
+            <button type="button" data-selection-action="align-top">Arriba</button>
+            <button type="button" data-selection-action="align-center-y">Centro Y</button>
+            <button type="button" data-selection-action="align-bottom">Abajo</button>
+            <button type="button" data-selection-action="distribute-horizontal">Distribuir ↔</button>
+            <button type="button" data-selection-action="distribute-vertical">Distribuir ↕</button>
+          </div>
+          <div class="presentation-toolbar" id="presentationToolbar" hidden>
+            <span id="presentationStatus" role="status"></span>
+            <button class="btn" id="presentationPreviousBtn" type="button">← Anterior</button>
+            <button class="btn" id="presentationNextBtn" type="button">Siguiente →</button>
+            <button class="btn primary" id="presentationEndBtn" type="button">Finalizar</button>
           </div>
           <div id="canvas" class="canvas" tabindex="0" aria-label="Lienzo del diagrama; espacio y arrastrar para desplazar">
             <svg id="links" class="links" aria-hidden="true"></svg>
@@ -102,6 +136,8 @@
             <svg id="relationControls" class="relation-controls" aria-label="Controles de relación"></svg>
             <div class="canvas-empty" id="emptyState"><div class="empty-symbol">▦</div><h2>Tu modelo empieza aquí</h2><p>Crea una tabla o carga el ejemplo para explorar el diseñador.</p><button class="btn primary" id="sampleBtn">Cargar ejemplo</button></div>
           </div>
+          <canvas id="miniMap" class="mini-map" aria-label="Minimapa del diagrama" title="Haz clic para navegar" hidden></canvas>
+          <svg class="alignment-guides" id="alignmentGuides" aria-hidden="true"></svg>
         </section>
         <section class="editor-view sql-panel" id="outputView" role="tabpanel" aria-label="Salida del proyecto" hidden>
           <pre id="output" class="output"></pre>

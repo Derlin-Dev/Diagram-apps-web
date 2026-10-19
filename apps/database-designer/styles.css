@@ -1166,6 +1166,9 @@ button {
   stroke: #075fc7;
   stroke-width: 3.5;
 }
+.relation-line.active:not(.dimmed) {
+  filter: drop-shadow(0 0 2px #328dff66);
+}
 .relation-line.dimmed {
   opacity: 0.2;
 }
@@ -1191,6 +1194,10 @@ button {
 .relation-route-handle {
   fill: #d8c7ff;
   stroke: #7041bf;
+}
+.relation-waypoint-handle {
+  fill: #f7d96b;
+  stroke: #765700;
 }
 .relation-controls {
   position: absolute;
@@ -1296,3 +1303,54 @@ button {
 .modal-card [hidden] {
   display: none;
 }
+.presentation-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border, #dbe4ef);
+  background: var(--panel, #fff);
+  color: var(--muted, #53708f);
+  font-size: 11px;
+}
+.presentation-toolbar[hidden] { display: none; }
+.presentation-toolbar #presentationStatus { flex: 1; }
+.presentation-toolbar button:disabled { opacity: .45; cursor: not-allowed; }
+.table-card[hidden] { display: none !important; }
+.modal-card input[type="color"] { height: 38px; padding: 4px; }
+.modal-card .modal-actions { flex-wrap: wrap; }
+.modal-card .tab-spacer { flex: 1; }
+.canvas-view { position: relative; }
+.canvas.no-grid { background-image: none; }
+.canvas-toolbar { height: 60px; min-height: 60px; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overflow-y: hidden; }
+.canvas-toolbar > * { flex-shrink: 0; }
+.diagram-search { flex: 0 0 180px; }
+.canvas-actions { flex: 0 0 auto; flex-wrap: nowrap; }
+.canvas-actions .icon-btn[aria-pressed=true] { border-color: #328dff; background: #e6f2ff; }
+.canvas-actions #miniMapToggleBtn,
+.canvas-actions #batchRelationsBtn { width: auto; min-width: 0; flex: 0 0 auto; padding: 0 7px; font-size: 10px; white-space: nowrap; }
+.compact-control { width: auto; max-width: 125px; padding: 7px; font-size: 10px; }
+.snap-toggle { display: flex; align-items: center; gap: 4px; color: #52708d; font-size: 10px; white-space: nowrap; }
+.mini-map { position: absolute; right: 20px; bottom: 20px; z-index: 12; width: 190px; height: 130px; border: 1px solid #71849b; border-radius: 8px; background: #f4f7fb; box-shadow: 0 7px 24px #15283d44; cursor: crosshair; }
+.mini-map[hidden] { display: none; }
+.alignment-guides { position: absolute; z-index: 16; pointer-events: none; overflow: visible; }
+.alignment-guide { stroke: #e3a11b; stroke-width: 1.5; stroke-dasharray: 5 4; }
+.selection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid #c4d3e4; border-radius: 8px; background: #f6f9fd; }
+.selection-actions[hidden] { display: none; }
+.selection-actions span { margin: 0 6px; color: #385b82; font-size: 11px; font-weight: 700; }
+.selection-actions button { padding: 5px 8px; border: 1px solid #c4d3e4; border-radius: 6px; background: #fff; color: #29435e; font-size: 10px; }
+.selection-actions button:hover { border-color: #328dff; background: #edf6ff; }
+.table-card.multi-selected { outline: 2px solid #2684d8; outline-offset: 2px; }
+.table-card { touch-action: none; }
+.batch-relation-dialog,.batch-edge-dialog { width: min(430px,calc(100% - 28px)); padding: 22px; border: 1px solid #b9c9dc; border-radius: 12px; background: #fff; color: #20354b; box-shadow: 0 20px 70px #0b274055; }
+.batch-relation-dialog::backdrop,.batch-edge-dialog::backdrop { background: #0c203366; }
+.batch-relation-dialog form,.batch-relation-form,.batch-edge-dialog form { display: grid; gap: 13px; }
+.batch-relation-dialog h2,.batch-edge-dialog h2 { margin: 0; font-size: 19px; }
+.batch-relation-dialog p,.batch-edge-dialog p { margin: 0; color: #60758b; font-size: 13px; }
+.batch-relation-dialog label,.batch-edge-dialog label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.batch-relation-dialog select,.batch-edge-dialog select,.batch-edge-dialog input[name=label] { flex: 1; min-width: 0; padding: 8px; border: 1px solid #bac9da; border-radius: 6px; background: white; color: #20354b; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.dialog-actions button { padding: 8px 12px; border: 1px solid #bac9da; border-radius: 6px; background: #fff; color: #20354b; }
+.dialog-actions .btn-primary { background: #2677c8; color: white; border-color: #2677c8; }

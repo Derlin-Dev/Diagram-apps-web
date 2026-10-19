@@ -208,6 +208,19 @@
           warnings.push(`Se restableció un recorrido inválido en la relación ${String(r.id || '')}`);
         }
       }
+      if (r.waypoints !== undefined) {
+        if (Array.isArray(r.waypoints) && r.waypoints.length <= 50 &&
+            r.waypoints.every((point) => point && typeof point === 'object' && !Array.isArray(point) &&
+              Number.isFinite(point.x) && Number.isFinite(point.y) &&
+              Math.abs(point.x) <= 100000 && Math.abs(point.y) <= 100000)) {
+          normalizedRelation.waypoints = r.waypoints.map((point) => ({
+            x: Math.round(point.x),
+            y: Math.round(point.y),
+          }));
+        } else {
+          warnings.push(`Se restablecieron puntos de ruta inválidos en la relación ${String(r.id || '')}`);
+        }
+      }
       relations.push(normalizedRelation);
     });
 
@@ -471,6 +484,78 @@
     }
   }
 
+  function relationPath(sourcePoint, targetPoint, sourceDirection, targetDirection, via, style, waypoints = []) {
+    const { x: sx, y: sy } = sourcePoint;
+    const { x: ex, y: ey } = targetPoint;
+    if (style === 'straight') {
+      const points = orthogonalRoute(sourcePoint, targetPoint, sourceDirection, targetDirection, waypoints);
+      return `M ${points.map((point) => `${point.x} ${point.y}`).join(' L ')}`;
+    }
+    const curve = Math.max(40, Math.hypot(ex - sx, ey - sy) / 2);
+    if (via) {
+      const midpoint = { x: (sx + ex) / 2, y: (sy + ey) / 2 };
+      return `M ${sx} ${sy} Q ${midpoint.x + via.x * 2} ${midpoint.y + via.y * 2} ${ex} ${ey}`;
+    }
+    return `M ${sx} ${sy} C ${sx + sourceDirection.x * curve} ${sy + sourceDirection.y * curve}, ${ex + targetDirection.x * curve} ${ey + targetDirection.y * curve}, ${ex} ${ey}`;
+  }
+
+  function orthogonalRoute(sourcePoint, targetPoint, sourceDirection, targetDirection, waypoints = []) {
+    const points = [sourcePoint];
+    const append = (point) => {
+      const previous = points[points.length - 1];
+      if (previous.x !== point.x && previous.y !== point.y) points.push({ x: point.x, y: previous.y });
+      if (previous.x !== point.x || previous.y !== point.y) points.push(point);
+    };
+    if (waypoints.length) {
+      waypoints.forEach(append);
+      append(targetPoint);
+      return points;
+    }
+
+    const stubLength = 24;
+    const startStub = {
+      x: sourcePoint.x + sourceDirection.x * stubLength,
+      y: sourcePoint.y + sourceDirection.y * stubLength,
+    };
+    const endStub = {
+      x: targetPoint.x - targetDirection.x * stubLength,
+      y: targetPoint.y - targetDirection.y * stubLength,
+    };
+    append(startStub);
+    if (sourceDirection.y === 0 && targetDirection.y === 0) {
+      const middleX = (startStub.x + endStub.x) / 2;
+      append({ x: middleX, y: startStub.y });
+      append({ x: middleX, y: endStub.y });
+    } else if (sourceDirection.x === 0 && targetDirection.x === 0) {
+      const middleY = (startStub.y + endStub.y) / 2;
+      append({ x: startStub.x, y: middleY });
+      append({ x: endStub.x, y: middleY });
+    } else {
+      append({ x: endStub.x, y: startStub.y });
+    }
+    append(endStub);
+    append(targetPoint);
+    return points;
+  }
+
+  function polylineMidpoint(points) {
+    const lengths = points.slice(1).map((point, index) =>
+      Math.hypot(point.x - points[index].x, point.y - points[index].y));
+    const total = lengths.reduce((sum, length) => sum + length, 0);
+    let remaining = total / 2;
+    for (let index = 0; index < lengths.length; index++) {
+      const length = lengths[index];
+      if (remaining <= length) {
+        const start = points[index];
+        const end = points[index + 1];
+        const ratio = length ? remaining / length : 0;
+        return { x: start.x + (end.x - start.x) * ratio, y: start.y + (end.y - start.y) * ratio };
+      }
+      remaining -= length;
+    }
+    return points[0];
+  }
+
   return {
     TYPES, INT_TYPES, RELATION_TYPES, ACTIONS, DIALECTS, COLORS, JUNCTION_COLOR,
     validateFieldDefault,
@@ -478,5 +563,6 @@
     isReferencedSource, isFkTarget,
     sanitizeModel, validateModel,
     createRelation, updateRelation, dropRelation, removeTable, removeField, setFieldType,
+    relationPath, orthogonalRoute, polylineMidpoint,
   };
 });

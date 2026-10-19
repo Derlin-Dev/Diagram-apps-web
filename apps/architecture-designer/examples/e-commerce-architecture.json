@@ -1,0 +1,543 @@
+{
+  "app": "ArqSketch",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "customer",
+      "type": "user",
+      "name": "Cliente",
+      "description": "Usuario que consulta el catalogo y realiza compras",
+      "icon": "user",
+      "details": {
+        "role": "Comprador",
+        "accessLevel": "Usuario",
+        "authMethod": "",
+        "identityProvider": ""
+      },
+      "x": 20,
+      "y": 420
+    },
+    {
+      "id": "storefront",
+      "type": "frontend",
+      "name": "Cliente web / movil",
+      "description": "Consumidor HTTP de la API; la tecnologia frontend no esta definida en este backend",
+      "icon": "globe",
+      "details": {
+        "platform": "Web y móvil",
+        "framework": "",
+        "baseUrl": "",
+        "access": "Público",
+        "authMethod": ""
+      },
+      "x": 20,
+      "y": 190
+    },
+    {
+      "id": "api-gateway",
+      "type": "backend",
+      "name": "API Gateway",
+      "description": "Punto de entrada HTTP y enrutamiento a microservicios",
+      "icon": "api",
+      "details": {
+        "basePath": "/e-commerce/api/v1",
+        "runtime": "Spring Cloud Gateway / WebFlux"
+      },
+      "x": 520,
+      "y": 150
+    },
+    {
+      "id": "product-service",
+      "type": "backend",
+      "name": "Product Services",
+      "description": "Catalogo y categorias; usa Redis para cache",
+      "icon": "code",
+      "details": {
+        "basePath": "/e-commerce/api/v1/product y /category",
+        "runtime": "Spring Boot"
+      },
+      "x": 285,
+      "y": 390
+    },
+    {
+      "id": "user-service",
+      "type": "backend",
+      "name": "User Services",
+      "description": "Usuarios, autenticacion y tokens temporales",
+      "icon": "security",
+      "details": {
+        "basePath": "/e-commerce/api/v1/user y /auth",
+        "runtime": "Spring Boot"
+      },
+      "x": 550,
+      "y": 390
+    },
+    {
+      "id": "cart-service",
+      "type": "backend",
+      "name": "Cart Services",
+      "description": "Carritos y lineas de productos; consulta el catalogo por HTTP",
+      "icon": "app",
+      "details": {
+        "basePath": "/e-commerce/api/v1/shoppingcart",
+        "runtime": "Spring Boot / RestTemplate"
+      },
+      "x": 815,
+      "y": 390
+    },
+    {
+      "id": "order-service",
+      "type": "backend",
+      "name": "Order Services",
+      "description": "Crea pedidos desde productos o el carrito",
+      "icon": "app",
+      "details": {
+        "basePath": "/e-commerce/api/v1/orders",
+        "runtime": "Spring Boot / RestTemplate"
+      },
+      "x": 550,
+      "y": 610
+    },
+    {
+      "id": "discovery-server",
+      "type": "backend",
+      "name": "Discovery Server",
+      "description": "Eureka para registro y descubrimiento de servicios",
+      "icon": "server",
+      "details": {
+        "basePath": "http://discovery-server:8761/eureka",
+        "runtime": "Spring Boot / Eureka"
+      },
+      "x": 1590,
+      "y": 145
+    },
+    {
+      "id": "docker-compose",
+      "type": "cloud",
+      "name": "Docker Compose",
+      "description": "Red local e-commerce-network; la infraestructura y los servicios se ejecutan en contenedores",
+      "icon": "docker",
+      "details": {
+        "provider": "Docker",
+        "region": "Local",
+        "environment": "Desarrollo",
+        "deployment": "Contenedores",
+        "scaling": ""
+      },
+      "x": 1295,
+      "y": 145
+    },
+    {
+      "id": "product-db",
+      "type": "database",
+      "name": "product_DB",
+      "description": "PostgreSQL aislado para Product Services",
+      "icon": "database",
+      "details": {
+        "engine": "PostgreSQL 15",
+        "databaseName": "product_DB",
+        "deployment": "Autogestionado",
+        "environment": "Desarrollo",
+        "access": "Privado",
+        "authMethod": ""
+      },
+      "x": 1260,
+      "y": 345
+    },
+    {
+      "id": "user-db",
+      "type": "database",
+      "name": "user_DB",
+      "description": "PostgreSQL aislado para User Services",
+      "icon": "database",
+      "details": {
+        "engine": "PostgreSQL 15",
+        "databaseName": "user_DB",
+        "deployment": "Autogestionado",
+        "environment": "Desarrollo",
+        "access": "Privado",
+        "authMethod": ""
+      },
+      "x": 1550,
+      "y": 345
+    },
+    {
+      "id": "cart-db",
+      "type": "database",
+      "name": "shoppingcart_DB",
+      "description": "PostgreSQL aislado para Cart Services",
+      "icon": "database",
+      "details": {
+        "engine": "PostgreSQL 15",
+        "databaseName": "shoppingcart_DB",
+        "deployment": "Autogestionado",
+        "environment": "Desarrollo",
+        "access": "Privado",
+        "authMethod": ""
+      },
+      "x": 1260,
+      "y": 525
+    },
+    {
+      "id": "order-db",
+      "type": "database",
+      "name": "orders_DB",
+      "description": "PostgreSQL aislado para Order Services",
+      "icon": "database",
+      "details": {
+        "engine": "PostgreSQL 15",
+        "databaseName": "orders_DB",
+        "deployment": "Autogestionado",
+        "environment": "Desarrollo",
+        "access": "Privado",
+        "authMethod": ""
+      },
+      "x": 1550,
+      "y": 525
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "name": "Redis",
+      "description": "Cache de Product Services configurada en la red local",
+      "icon": "redis",
+      "details": {
+        "engine": "Redis",
+        "databaseName": "cache de productos",
+        "deployment": "Autogestionado",
+        "environment": "Desarrollo",
+        "access": "Privado",
+        "authMethod": ""
+      },
+      "x": 1260,
+      "y": 705
+    },
+    {
+      "id": "rabbitmq",
+      "type": "service",
+      "name": "RabbitMQ",
+      "description": "Broker incluido en la infraestructura; Notification Services no esta habilitado en compose.services",
+      "icon": "rabbitmq",
+      "details": {
+        "provider": "RabbitMQ",
+        "integration": "Cola / eventos",
+        "baseUrl": "",
+        "authMethod": ""
+      },
+      "x": 1550,
+      "y": 705
+    },
+    {
+      "id": "payment-service",
+      "type": "backend",
+      "name": "Payment Services",
+      "description": "Modulo presente en el repositorio, comentado en docker-compose.services",
+      "icon": "payment",
+      "details": {
+        "basePath": "",
+        "runtime": "Spring Boot; no se despliega en el compose actual"
+      },
+      "x": 370,
+      "y": 1090
+    },
+    {
+      "id": "notification-service",
+      "type": "backend",
+      "name": "Notification Services",
+      "description": "Modulo presente en el repositorio, comentado en docker-compose.services",
+      "icon": "mail",
+      "details": {
+        "basePath": "",
+        "runtime": "Spring Boot; no se despliega en el compose actual"
+      },
+      "x": 720,
+      "y": 1090
+    }
+  ],
+  "shapes": [
+    {
+      "id": "application-services",
+      "type": "rectangle",
+      "title": "Microservicios habilitados en docker-compose.services",
+      "color": "#65bfff",
+      "x": 250,
+      "y": 90,
+      "width": 920,
+      "height": 770
+    },
+    {
+      "id": "infrastructure",
+      "type": "ellipse",
+      "title": "Infraestructura de docker-compose.infra",
+      "color": "#9b8cff",
+      "x": 1210,
+      "y": 90,
+      "width": 790,
+      "height": 830
+    },
+    {
+      "id": "disabled-services",
+      "type": "rectangle",
+      "title": "Modulos comentados en docker-compose.services",
+      "color": "#f0a35e",
+      "x": 250,
+      "y": 1010,
+      "width": 920,
+      "height": 290
+    }
+  ],
+  "edges": [
+    {
+      "id": "customer-storefront",
+      "from": "customer",
+      "to": "storefront",
+      "label": "Usa",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "general"
+    },
+    {
+      "id": "storefront-gateway",
+      "from": "storefront",
+      "to": "api-gateway",
+      "label": "HTTP / API",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "gateway-discovery",
+      "from": "api-gateway",
+      "to": "discovery-server",
+      "label": "Descubrimiento Eureka",
+      "direction": "both",
+      "style": "dashed",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "gateway-products",
+      "from": "api-gateway",
+      "to": "product-service",
+      "label": "/product/** y /category/**",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "gateway-users",
+      "from": "api-gateway",
+      "to": "user-service",
+      "label": "/auth/** y /user/**",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "gateway-cart",
+      "from": "api-gateway",
+      "to": "cart-service",
+      "label": "/shoppingcart/**",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "gateway-orders",
+      "from": "api-gateway",
+      "to": "order-service",
+      "label": "/orders/**",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "products-registry",
+      "from": "product-service",
+      "to": "discovery-server",
+      "label": "Registro de servicio",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "users-registry",
+      "from": "user-service",
+      "to": "discovery-server",
+      "label": "Registro de servicio",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "cart-registry",
+      "from": "cart-service",
+      "to": "discovery-server",
+      "label": "Registro de servicio",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "orders-registry",
+      "from": "order-service",
+      "to": "discovery-server",
+      "label": "Registro de servicio",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "cart-products",
+      "from": "cart-service",
+      "to": "product-service",
+      "label": "Consulta producto por HTTP",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "orders-cart",
+      "from": "order-service",
+      "to": "cart-service",
+      "label": "Lee carrito por HTTP",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "orders-products",
+      "from": "order-service",
+      "to": "product-service",
+      "label": "Consulta producto por HTTP",
+      "direction": "forward",
+      "style": "solid",
+      "connectionType": "api"
+    },
+    {
+      "id": "products-db",
+      "from": "product-service",
+      "to": "product-db",
+      "label": "PostgreSQL",
+      "direction": "both",
+      "style": "solid",
+      "connectionType": "data"
+    },
+    {
+      "id": "users-db",
+      "from": "user-service",
+      "to": "user-db",
+      "label": "PostgreSQL",
+      "direction": "both",
+      "style": "solid",
+      "connectionType": "data"
+    },
+    {
+      "id": "cart-db",
+      "from": "cart-service",
+      "to": "cart-db",
+      "label": "PostgreSQL",
+      "direction": "both",
+      "style": "solid",
+      "connectionType": "data"
+    },
+    {
+      "id": "orders-db",
+      "from": "order-service",
+      "to": "order-db",
+      "label": "PostgreSQL",
+      "direction": "both",
+      "style": "solid",
+      "connectionType": "data"
+    },
+    {
+      "id": "products-redis",
+      "from": "product-service",
+      "to": "redis",
+      "label": "Cache de productos",
+      "direction": "both",
+      "style": "dashed",
+      "connectionType": "data"
+    },
+    {
+      "id": "compose-registry",
+      "from": "docker-compose",
+      "to": "discovery-server",
+      "label": "Contenedores",
+      "direction": "none",
+      "style": "dotted",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "compose-product-db",
+      "from": "docker-compose",
+      "to": "product-db",
+      "label": "Contenedores",
+      "direction": "none",
+      "style": "dotted",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "compose-user-db",
+      "from": "docker-compose",
+      "to": "user-db",
+      "label": "Contenedores",
+      "direction": "none",
+      "style": "dotted",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "compose-cart-db",
+      "from": "docker-compose",
+      "to": "cart-db",
+      "label": "Contenedores",
+      "direction": "none",
+      "style": "dotted",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "compose-order-db",
+      "from": "docker-compose",
+      "to": "order-db",
+      "label": "Contenedores",
+      "direction": "none",
+      "style": "dotted",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "compose-redis",
+      "from": "docker-compose",
+      "to": "redis",
+      "label": "Contenedores",
+      "direction": "none",
+      "style": "dotted",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "compose-rabbitmq",
+      "from": "docker-compose",
+      "to": "rabbitmq",
+      "label": "Contenedor disponible",
+      "direction": "none",
+      "style": "dotted",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "orders-payment-planned",
+      "from": "order-service",
+      "to": "payment-service",
+      "label": "Modulo aun no habilitado",
+      "direction": "forward",
+      "style": "dashed",
+      "connectionType": "dependency"
+    },
+    {
+      "id": "notification-rabbitmq-planned",
+      "from": "notification-service",
+      "to": "rabbitmq",
+      "label": "Integracion prevista; servicio desactivado",
+      "direction": "both",
+      "style": "dashed",
+      "connectionType": "events"
+    }
+  ]
+}

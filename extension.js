@@ -66,7 +66,7 @@ function createWebviewHtml(webview, extensionUri, designer) {
     `style-src ${webview.cspSource} 'unsafe-inline'`,
     `script-src 'nonce-${nonce}'`,
     `font-src ${webview.cspSource} data:`,
-    `connect-src https://api.iconify.design`,
+    `connect-src ${webview.cspSource} https://api.iconify.design`,
     `base-uri 'none'`,
     `form-action 'none'`,
   ].join('; ');

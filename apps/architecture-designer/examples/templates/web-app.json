@@ -1,0 +1,79 @@
+{
+  "app": "ArqSketch",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "user-1",
+      "type": "user",
+      "name": "Usuario",
+      "x": 50,
+      "y": 160
+    },
+    {
+      "id": "web-1",
+      "type": "frontend",
+      "name": "Frontend web",
+      "x": 300,
+      "y": 160,
+      "details": {
+        "platform": "Web",
+        "framework": "React",
+        "baseUrl": "",
+        "access": "",
+        "authMethod": ""
+      }
+    },
+    {
+      "id": "api-1",
+      "type": "backend",
+      "name": "API REST",
+      "x": 600,
+      "y": 160,
+      "details": {
+        "basePath": "/api/v1",
+        "runtime": "Node.js",
+        "endpoints": []
+      }
+    },
+    {
+      "id": "db-1",
+      "type": "database",
+      "name": "PostgreSQL",
+      "x": 900,
+      "y": 160,
+      "details": {
+        "engine": "PostgreSQL",
+        "databaseName": "",
+        "deployment": "",
+        "environment": "",
+        "access": "",
+        "authMethod": ""
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "from": "user-1",
+      "to": "web-1",
+      "label": "HTTPS",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-2",
+      "from": "web-1",
+      "to": "api-1",
+      "label": "REST / JSON",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-3",
+      "from": "api-1",
+      "to": "db-1",
+      "label": "SQL",
+      "connectionType": "data"
+    }
+  ],
+  "shapes": [],
+  "legend": []
+}

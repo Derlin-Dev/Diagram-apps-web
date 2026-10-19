@@ -17,9 +17,15 @@ Comparte la paleta y los tokens tipográficos de `../../shared/visual-theme.css`
 - Buscar tablas y campos desde el diagrama; el resultado selecciona la tabla, resalta el campo y centra el lienzo (`Ctrl+F` / `Cmd+F`).
 - Navegar diagramas grandes con zoom centrado en el cursor (`Ctrl` + rueda), arrastre del lienzo con botón central o `Espacio` + arrastre, centrar tabla seleccionada y ajustar el diagrama completo.
 - Organizar todas las tablas manualmente en una cuadrícula sin superposiciones desde el botón ▦ de la barra del lienzo; el cambio se puede deshacer y el diagrama se ajusta a la pantalla.
+- Seleccionar tablas con `Ctrl/Cmd+clic`, arrastrarlas juntas, alinearlas por bordes o centros y distribuirlas uniformemente. La autoorganización ofrece flujo de dependencias, izquierda a derecha, capas y radial; puede reorganizar solo una selección.
+- Mostrar u ocultar la cuadrícula, activar el ajuste opcional al arrastrar y consultar guías temporales de alineación. Las relaciones de las tablas movidas se enrutan de nuevo.
+- Mostrar el minimapa para navegar por diagramas grandes y centrar una tabla o la selección; la búsqueda existente permite saltar a tablas y campos.
+- Seleccionar varias relaciones con `Ctrl/Cmd+clic` o `Mayús+clic` y aplicar en lote cardinalidad, `ON DELETE` y `ON UPDATE`. Los cambios se validan en conjunto antes de actualizar el modelo.
 - Abrir un menú contextual con clic derecho sobre una tabla o el lienzo para acceder a acciones comunes.
 - Reordenar campos arrastrando el control ⠿ en el panel de propiedades; el nuevo orden se conserva en el diagrama, el JSON y el SQL.
-- Exportar el diagrama completo como SVG o PNG desde la barra del lienzo; SVG conserva la nitidez al ampliarlo y PNG se genera con fondo claro.
+- Exportar el diagrama completo como SVG o abrir la exportación PNG/PDF configurando escala, orientación y color de fondo. PDF se genera desde el diálogo de impresión del navegador.
+- Presentar las tablas progresivamente en el orden del modelo con controles anterior/siguiente; finalizar restaura el diagrama completo sin cambiar los datos.
+- Guardar hasta 50 versiones con nombre y restaurarlas desde **Versiones**; además, guardar hasta 50 modelos como plantillas personalizadas, actualizarlas o eliminarlas. Las plantillas incluidas de blog, tienda y CRM permanecen intactas.
 - Editar relaciones existentes desde la lista de relaciones: cambiar 1:1/1:N, opcionalidad y acciones `ON DELETE`/`ON UPDATE`. Para relaciones N:M se editan las acciones de ambas claves de la tabla puente.
 - Importar DDL desde **Importar SQL**, pegando texto o cargando un archivo `.sql`. La primera versión admite `CREATE TABLE` de MySQL, PostgreSQL y SQLite con claves primarias, claves foráneas simples, `UNIQUE` y `NOT NULL`; las sentencias o características no compatibles se omiten y aparecen como advertencias antes de confirmar. La importación reemplaza el modelo actual y solicita confirmación.
 - Editar o pegar SQL directamente en la pestaña **SQL**. Usa **Revisar y aplicar** (o `Ctrl+Enter` / `Cmd+Enter`) para analizarlo y confirmar el cambio al diagrama; el código escrito no modifica el modelo hasta que se aplique. **Restaurar SQL generado** descarta el borrador.
@@ -34,8 +40,9 @@ Comparte la paleta y los tokens tipográficos de `../../shared/visual-theme.css`
   - Acciones `ON DELETE` / `ON UPDATE` (`NO ACTION`, `RESTRICT`, `CASCADE`, `SET NULL`) y FK opcional.
   - Solo se puede referenciar un campo que sea PK o UNIQUE, y el tipo de la FK sigue al del campo referenciado.
 - Notación pata de gallo en las líneas: dos barras = “uno”, tres puntas = “muchos”.
-- Las relaciones se dibujan detrás de las tarjetas; al seleccionar una tabla, sus conexiones se resaltan y las demás se atenúan.
-- Seleccionar una relación en el lienzo muestra controles para mover los extremos por los bordes de las tablas y ajustar el recorrido. La posición se conserva en el JSON, autoguardado, historial y exportación SVG.
+- Las relaciones se dibujan detrás de las tarjetas; al seleccionar una tabla, sus conexiones se resaltan y las demás se atenúan. También aparecen controles para modificar directamente cada relación conectada. Al mover una tabla, sus relaciones se enrutan automáticamente de nuevo y se restablecen sus ajustes manuales de anclaje o recorrido.
+- Haz clic en una relación para enfocarla y editarla desde el lienzo; sus controles permiten mover los extremos por los bordes de las tablas y ajustar el recorrido. La posición se conserva en el JSON, autoguardado, historial y exportación SVG.
+- Elegir en **Diagrama** si todas las conexiones se muestran curvas o rectas en ángulo recto. Es una preferencia visual global que se conserva en el navegador y también se aplica al SVG exportado; al cambiar de estilo se mantienen intactos los puntos de ruta guardados. Con una tabla seleccionada, sus relaciones muestran puntos de control; arrástralos para remodelar la ruta o haz doble clic sobre una línea recta para agregar un punto. La ruta se conserva en el JSON.
 - Volver al portal desde el botón visible **← Inicio** en la barra superior.
 - Generar SQL para MySQL, PostgreSQL o SQLite:
   - Las tablas se ordenan según sus dependencias; en caso de ciclos, las FK se emiten con `ALTER TABLE`.
@@ -47,9 +54,10 @@ Comparte la paleta y los tokens tipográficos de `../../shared/visual-theme.css`
 - Los valores por defecto admiten literales de texto, números y booleanos; `CURRENT_TIMESTAMP` solo se admite en campos `DATETIME` para mantener compatibilidad entre motores. El texto se escapa como literal SQL; no se ejecuta como una expresión arbitraria.
 - Exportar documentación Markdown con tablas, campos, restricciones, descripciones y relaciones desde **Documentación**.
 - Pestaña **Resumen** con advertencias (nombres duplicados, tablas sin PK, FK a campos no únicos, tipos distintos…).
-- Deshacer / rehacer (`Ctrl+Z` / `Ctrl+Y`) y autoguardado del modelo en el navegador; la interfaz confirma el guardado y avisa si el almacenamiento falla. Los borradores SQL aún no aplicados se advierten al salir.
+- Deshacer / rehacer (`Ctrl+Z` / `Ctrl+Y`) y autoguardado del modelo en el navegador; la interfaz confirma el guardado y avisa si el almacenamiento falla. Las versiones y plantillas personalizadas también se guardan localmente en este navegador. Los borradores SQL aún no aplicados se advierten al salir.
 - Exportar `schema.sql` con el dialecto activo, guardar/importar el modelo JSON (se valida y sanea al importar), descargar la vista activa del panel, copiar el contenido y duplicar/pegar tablas desde el portapapeles.
 - Ejemplo de modelo con relaciones 1:1, 1:N y N:M.
+- Modelo de prueba del proyecto E-Commerce en [`examples/e-commerce-database.json`](./examples/e-commerce-database.json): ocho tablas de los cuatro servicios con PostgreSQL como dialecto. Las referencias entre servicios se conservan como códigos, sin inventar claves foráneas entre bases aisladas; los tipos `double` se aproximan a `DECIMAL(10,2)` para ajustarse a los tipos disponibles en el diseñador.
 
 ## Atajos
 | Tecla | Acción |

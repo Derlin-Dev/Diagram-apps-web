@@ -1,0 +1,99 @@
+{
+  "app": "ArqSketch",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "web-1",
+      "type": "frontend",
+      "name": "Tienda web",
+      "x": 70,
+      "y": 220
+    },
+    {
+      "id": "api-1",
+      "type": "backend",
+      "name": "API Gateway",
+      "x": 350,
+      "y": 220
+    },
+    {
+      "id": "orders-1",
+      "type": "backend",
+      "name": "Pedidos",
+      "x": 660,
+      "y": 100
+    },
+    {
+      "id": "payments-1",
+      "type": "service",
+      "name": "Pagos",
+      "x": 660,
+      "y": 360
+    },
+    {
+      "id": "queue-1",
+      "type": "service",
+      "name": "Cola de eventos",
+      "x": 960,
+      "y": 220
+    },
+    {
+      "id": "db-1",
+      "type": "database",
+      "name": "Almacén de pedidos",
+      "x": 1260,
+      "y": 100
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "from": "web-1",
+      "to": "api-1",
+      "label": "HTTPS",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-2",
+      "from": "api-1",
+      "to": "orders-1",
+      "label": "REST",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-3",
+      "from": "api-1",
+      "to": "payments-1",
+      "label": "REST",
+      "connectionType": "api"
+    },
+    {
+      "id": "edge-4",
+      "from": "orders-1",
+      "to": "queue-1",
+      "label": "Eventos",
+      "connectionType": "events"
+    },
+    {
+      "id": "edge-5",
+      "from": "orders-1",
+      "to": "db-1",
+      "label": "SQL",
+      "connectionType": "data"
+    }
+  ],
+  "shapes": [
+    {
+      "id": "grp-1",
+      "type": "rectangle",
+      "title": "Servicios internos",
+      "category": "domain",
+      "color": "#65bfff",
+      "x": 620,
+      "y": 55,
+      "width": 680,
+      "height": 510
+    }
+  ],
+  "legend": []
+}

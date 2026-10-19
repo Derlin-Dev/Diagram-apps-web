@@ -7,7 +7,13 @@ Portal local que reúne herramientas de diseño en aplicaciones independientes.
 - **Diseñador de bases de datos** — disponible en `apps/database-designer/`. Diseña esquemas relacionales, trabaja con SQL y exporta el modelo.
 - **Diagramas de arquitectura (ArqSketch)** — herramienta independiente para diagramar aplicaciones y sistemas en `apps/architecture-designer/`.
 
-Abre `index.html` para acceder al portal o directamente `apps/database-designer/index.html` para iniciar el diseñador de bases de datos. Ambas opciones funcionan sin servidor en un navegador moderno.
+ArqSketch permite agrupar componentes en dominios, entornos y zonas de confianza; plegar contenedores sin perder las conexiones externas; filtrar visualmente el diagrama por tipo de componente; editar una leyenda persistente; y reubicar etiquetas de conexiones. Los filtros solo afectan la vista: el JSON y el SVG exportados conservan el diagrama completo.
+
+Ambos diseñadores permiten exportar el diagrama como PNG con escala, orientación y color de fondo configurables, o abrir la impresión del navegador para guardarlo como PDF. También incluyen una presentación progresiva (tablas en DB Designer; grupos y componentes en ArqSketch), versiones con nombre guardadas localmente y plantillas iniciales editables mediante copias personalizadas. Las versiones y plantillas permanecen en el almacenamiento local del navegador y no se sincronizan entre dispositivos.
+
+Para diagramas grandes, ambos ofrecen autoorganización por dependencias/capas, de izquierda a derecha o radial; alineación y distribución de selecciones múltiples; ajuste opcional a cuadrícula, guías de alineación temporales, minimapa y búsqueda con salto al elemento. En ArqSketch se pueden editar varias conexiones seleccionadas a la vez; DB Designer permite editar en lote cardinalidad y acciones `ON DELETE`/`ON UPDATE`.
+
+DB Designer puede abrirse directamente desde `apps/database-designer/index.html`. Para usar el portal con ArqSketch en un navegador, inicia un servidor estático desde la raíz del proyecto (`python3 -m http.server 8000`) y abre `http://localhost:8000/`; ArqSketch carga sus plantillas incluidas como archivos JSON y el navegador bloquea esa lectura si se abre desde `file://`.
 
 ## Extensión para VS Code
 

@@ -15,6 +15,10 @@
   const $ = (s) => document.querySelector(s);
   const NS = 'http://www.w3.org/2000/svg';
   const STORAGE_KEY = 'dbdesigner:autosave:v2';
+  const RELATION_STYLE_KEY = 'dbdesigner:relation-style:v1';
+  const relationPath = window.DBD.relationPath;
+  const orthogonalRoute = window.DBD.orthogonalRoute;
+  const polylineMidpoint = window.DBD.polylineMidpoint;
   const canvas = $('#canvas');
   const layer = $('#tablesLayer');
   const links = $('#links');
@@ -24,11 +28,17 @@
     tables: [], relations: [], selected: null,
     mode: 'select', relationSource: null, searchTarget: null, zoom: 1, tab: 'canvas', dirty: false,
     sqlDraft: null, sqlDraftDirty: false, hasSavedCopy: false, autosaveFailed: false,
+    presentationActive: false, presentationStep: -1,
   };
   const cardEls = new Map();
   let idCounter = 1;
   let toastTimer;
+  let relationLineStyle = 'curved';
   let selectedRelation = null;
+  const selectedTableIds = new Set();
+  const selectedRelationIds = new Set();
+  let snapToGrid = false;
+  let suppressCardClick = false;
   let spacePan = false;
   let activePan = null;
   let contextMenu = null;
@@ -286,9 +296,35 @@
 
   function select(id) {
     state.selected = id;
+    selectedTableIds.clear();
+    if (id) selectedTableIds.add(id);
+    selectedRelationIds.clear();
     selectedRelation = null;
     renderCanvas();
     renderProperties();
+    updateProductivityControls();
+  }
+  function toggleTableSelection(id) {
+    selectedRelation = null;
+    selectedRelationIds.clear();
+    state.selected = null;
+    if (selectedTableIds.has(id)) selectedTableIds.delete(id);
+    else selectedTableIds.add(id);
+    const first = [...selectedTableIds][0] || null;
+    state.selected = first;
+    renderCanvas();
+    renderProperties();
+    updateProductivityControls();
+  }
+  function updateProductivityControls() {
+    const batch = $('#batchRelationsBtn');
+    const align = $('#alignTablesBtn');
+    const actions = $('#selectionActions');
+    if (actions) actions.hidden = selectedTableIds.size < 2;
+    const count = $('#selectionCount');
+    if (count) count.textContent = `${selectedTableIds.size} seleccionadas`;
+    if (batch) batch.disabled = selectedRelationIds.size < 2;
+    if (align) align.disabled = selectedTableIds.size < 2;
   }
 
   function findSearchResults(query) {
@@ -353,6 +389,8 @@
   }
 
   function renderCanvas() {
+    for (const id of selectedTableIds) if (!state.tables.some(table => table.id === id)) selectedTableIds.delete(id);
+    for (const id of selectedRelationIds) if (!state.relations.some(relation => relation.id === id)) selectedRelationIds.delete(id);
     layer.innerHTML = '';
     cardEls.clear();
     $('#emptyState').style.display = state.tables.length ? 'none' : 'block';
@@ -360,11 +398,13 @@
       const card = document.createElement('div');
       card.className =
         'table-card' +
-        (t.id === state.selected ? ' selected' : '') +
+        (selectedTableIds.has(t.id) || (!selectedTableIds.size && state.selected === t.id) ? ' selected' : '') +
+        (selectedTableIds.size > 1 && selectedTableIds.has(t.id) ? ' multi-selected' : '') +
         (t.junction ? ' junction' : '') +
         (t.id === state.relationSource ? ' rel-source' : '') +
         (state.searchTarget && state.searchTarget.tableId === t.id ? ' search-match' : '');
       card.dataset.id = t.id;
+      card.hidden = state.presentationActive && state.tables.indexOf(t) > state.presentationStep;
       card.tabIndex = 0;
       card.setAttribute('role', 'button');
       card.setAttribute('aria-label', `Tabla ${t.name}`);
@@ -384,7 +424,12 @@
             );
           })
           .join('');
-      card.addEventListener('click', (e) => { e.stopPropagation(); onCardClick(t.id, false); });
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (suppressCardClick) { suppressCardClick = false; return; }
+        if (e.ctrlKey || e.metaKey || e.shiftKey) toggleTableSelection(t.id);
+        else onCardClick(t.id, false);
+      });
       card.addEventListener('contextmenu', (event) => {
         event.stopPropagation();
         showTableContextMenu(t.id, event);
@@ -396,9 +441,11 @@
       layer.appendChild(card);
       cardEls.set(t.id, card);
     }
-    $('#organizeTablesBtn').disabled = !state.tables.length;
+    $('#organizeTablesBtn').disabled = state.tables.length < 2;
     applyZoom();
     drawLinks();
+    drawMiniMap();
+    updateProductivityControls();
   }
 
   function onCardClick(id, viaKeyboard) {
@@ -419,29 +466,110 @@
     if (viaKeyboard && cardEls.has(id)) cardEls.get(id).focus();
   }
 
+  function databaseSmartGuides(table, proposedX, proposedY, excludedIds) {
+    const card = cardEls.get(table.id);
+    const width = card?.offsetWidth || 230;
+    const height = card?.offsetHeight || 160;
+    const xs = [proposedX, proposedX + width / 2, proposedX + width];
+    const ys = [proposedY, proposedY + height / 2, proposedY + height];
+    let bestX = null, bestY = null;
+    state.tables.filter(other => !excludedIds.has(other.id)).forEach(other => {
+      const otherCard = cardEls.get(other.id);
+      const otherWidth = otherCard?.offsetWidth || 230;
+      const otherHeight = otherCard?.offsetHeight || 160;
+      [other.x, other.x + otherWidth / 2, other.x + otherWidth].forEach(target => xs.forEach(value => {
+        const delta = target - value;
+        if (Math.abs(delta) <= 7 / state.zoom && (!bestX || Math.abs(delta) < Math.abs(bestX.delta))) bestX = { delta, position: target };
+      }));
+      [other.y, other.y + otherHeight / 2, other.y + otherHeight].forEach(target => ys.forEach(value => {
+        const delta = target - value;
+        if (Math.abs(delta) <= 7 / state.zoom && (!bestY || Math.abs(delta) < Math.abs(bestY.delta))) bestY = { delta, position: target };
+      }));
+    });
+    return { dx: bestX?.delta || 0, dy: bestY?.delta || 0, x: bestX?.position, y: bestY?.position };
+  }
+  function renderDatabaseAlignmentGuides(x, y) {
+    const svg = $('#alignmentGuides');
+    const view = $('#canvasView');
+    const canvasRect = canvas.getBoundingClientRect();
+    const viewRect = view.getBoundingClientRect();
+    svg.style.left = `${canvasRect.left - viewRect.left}px`;
+    svg.style.top = `${canvasRect.top - viewRect.top}px`;
+    svg.style.width = `${canvas.clientWidth}px`;
+    svg.style.height = `${canvas.clientHeight}px`;
+    svg.setAttribute('viewBox', `0 0 ${canvas.clientWidth} ${canvas.clientHeight}`);
+    svg.replaceChildren();
+    [[x, 'vertical'], [y, 'horizontal']].forEach(([position, axis]) => {
+      if (position == null) return;
+      const line = document.createElementNS(NS, 'line');
+      if (axis === 'vertical') {
+        line.setAttribute('x1', position * state.zoom - canvas.scrollLeft);
+        line.setAttribute('x2', position * state.zoom - canvas.scrollLeft);
+        line.setAttribute('y1', '0'); line.setAttribute('y2', String(canvas.clientHeight));
+      } else {
+        line.setAttribute('y1', position * state.zoom - canvas.scrollTop);
+        line.setAttribute('y2', position * state.zoom - canvas.scrollTop);
+        line.setAttribute('x1', '0'); line.setAttribute('x2', String(canvas.clientWidth));
+      }
+      line.setAttribute('class', 'alignment-guide');
+      svg.appendChild(line);
+    });
+  }
   function startDrag(e, t, card) {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
     e.preventDefault();
-    const sx = e.clientX, sy = e.clientY, ox = t.x, oy = t.y;
+    const movingTables = selectedTableIds.has(t.id)
+      ? state.tables.filter(table => selectedTableIds.has(table.id))
+      : [t];
+    const original = movingTables.map(table => ({ table, x: table.x, y: table.y }));
+    const sx = e.clientX, sy = e.clientY;
     let moved = false;
+    let routesReset = false;
     function move(ev) {
-      const dx = (ev.clientX - sx) / state.zoom;
-      const dy = (ev.clientY - sy) / state.zoom;
+      let dx = (ev.clientX - sx) / state.zoom;
+      let dy = (ev.clientY - sy) / state.zoom;
       if (!moved && Math.hypot(dx, dy) < 3) return;
       moved = true;
-      t.x = Math.max(0, Math.round(ox + dx));
-      t.y = Math.max(0, Math.round(oy + dy));
-      card.style.left = t.x + 'px';
-      card.style.top = t.y + 'px';
+      const primary = original.find(item => item.table.id === t.id) || original[0];
+      if (snapToGrid) {
+        dx += Math.round((primary.x + dx) / 20) * 20 - (primary.x + dx);
+        dy += Math.round((primary.y + dy) / 20) * 20 - (primary.y + dy);
+      }
+      const guides = databaseSmartGuides(primary.table, primary.x + dx, primary.y + dy, new Set(movingTables.map(table => table.id)));
+      dx += guides.dx;
+      dy += guides.dy;
+      renderDatabaseAlignmentGuides(guides.x, guides.y);
+      if (!routesReset) {
+        state.relations.forEach((relation) => {
+          if (!movingTables.some(table => relation.sourceTable === table.id || relation.targetTable === table.id)) return;
+          delete relation.sourceAnchor;
+          delete relation.targetAnchor;
+          delete relation.via;
+          delete relation.waypoints;
+        });
+        routesReset = true;
+      }
+      original.forEach(({ table, x, y }) => {
+        table.x = Math.max(0, Math.round(x + dx));
+        table.y = Math.max(0, Math.round(y + dy));
+        const element = cardEls.get(table.id);
+        if (element) {
+          element.style.left = table.x + 'px';
+          element.style.top = table.y + 'px';
+        }
+      });
       drawLinks();
     }
     function up() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
+      $('#alignmentGuides').replaceChildren();
       if (!moved) return;
       touch();
-      if (state.mode === 'select' && state.selected !== t.id) select(t.id);
+      if (state.mode === 'select' && !selectedTableIds.has(t.id)) select(t.id);
+      drawMiniMap();
+      renderCanvas();
     }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -537,22 +665,31 @@
     return { side: nearest.side, offset: Math.max(0, Math.min(1, nearest.offset)) };
   }
 
-  function addRelationHandle(relation, key, point, label) {
-    const handle = document.createElementNS(NS, 'circle');
-    handle.setAttribute('cx', point.x);
-    handle.setAttribute('cy', point.y);
-    handle.setAttribute('r', key === 'via' ? '7' : '6');
-    handle.setAttribute('class', `relation-handle${key === 'via' ? ' relation-route-handle' : ''}`);
+  function addRelationHandle(relation, key, point, label, routeIndex, routePoints) {
+    const isWaypoint = key === 'waypoint';
+    const handle = document.createElementNS(NS, isWaypoint ? 'rect' : 'circle');
+    if (isWaypoint) {
+      handle.setAttribute('x', point.x - 5);
+      handle.setAttribute('y', point.y - 5);
+      handle.setAttribute('width', '10');
+      handle.setAttribute('height', '10');
+      handle.setAttribute('transform', `rotate(45 ${point.x} ${point.y})`);
+    } else {
+      handle.setAttribute('cx', point.x);
+      handle.setAttribute('cy', point.y);
+      handle.setAttribute('r', key === 'via' ? '7' : '6');
+    }
+    handle.setAttribute('class', `relation-handle${key === 'via' ? ' relation-route-handle' : ''}${isWaypoint ? ' relation-waypoint-handle' : ''}`);
     handle.setAttribute('role', 'button');
     handle.setAttribute('tabindex', '0');
     handle.setAttribute('aria-label', label);
     handle.setAttribute('title', label);
-    handle.addEventListener('pointerdown', (event) => startRelationHandleDrag(event, relation, key));
+    handle.addEventListener('pointerdown', (event) => startRelationHandleDrag(event, relation, key, routeIndex, routePoints));
     handle.addEventListener('click', (event) => event.stopPropagation());
     relationControls.appendChild(handle);
   }
 
-  function startRelationHandleDrag(event, relation, key) {
+  function startRelationHandleDrag(event, relation, key, routeIndex, routePoints) {
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
@@ -561,7 +698,11 @@
       sourceAnchor: relation.sourceAnchor ? { ...relation.sourceAnchor } : undefined,
       targetAnchor: relation.targetAnchor ? { ...relation.targetAnchor } : undefined,
       via: relation.via ? { ...relation.via } : undefined,
+      waypoints: relation.waypoints ? relation.waypoints.map((point) => ({ ...point })) : undefined,
     };
+    if (key === 'waypoint' && !relation.waypoints) {
+      relation.waypoints = routePoints.slice(1, -1).map((point) => ({ ...point }));
+    }
     const rect = canvas.getBoundingClientRect();
     const pointFromEvent = (pointerEvent) => ({
       x: Math.max(0, (pointerEvent.clientX - rect.left + canvas.scrollLeft) / state.zoom),
@@ -576,6 +717,8 @@
         const { sourcePoint, targetPoint } = geometry;
         const midpoint = { x: (sourcePoint.x + targetPoint.x) / 2, y: (sourcePoint.y + targetPoint.y) / 2 };
         relation.via = { x: Math.round(point.x - midpoint.x), y: Math.round(point.y - midpoint.y) };
+      } else if (key === 'waypoint') {
+        relation.waypoints[routeIndex] = { x: Math.round(point.x), y: Math.round(point.y) };
       } else {
         const tableId = key === 'sourceAnchor' ? relation.sourceTable : relation.targetTable;
         const table = getTable(state, tableId);
@@ -595,7 +738,7 @@
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', finish);
       window.removeEventListener('pointercancel', cancel);
-      for (const property of ['sourceAnchor', 'targetAnchor', 'via']) {
+      for (const property of ['sourceAnchor', 'targetAnchor', 'via', 'waypoints']) {
         if (previous[property]) relation[property] = previous[property];
         else delete relation[property];
       }
@@ -625,29 +768,85 @@
     links.innerHTML = '';
     relationControls.replaceChildren();
     for (const r of state.relations) {
+      if (state.presentationActive &&
+          (state.tables.findIndex(table => table.id === r.sourceTable) > state.presentationStep ||
+           state.tables.findIndex(table => table.id === r.targetTable) > state.presentationStep)) continue;
       const geometry = relationGeometry(r);
       if (!geometry) continue;
       const { sourceTable: a, targetTable: b, sourceAnchor, targetAnchor, sourceDirection, targetDirection, sourcePoint, targetPoint } = geometry;
       const sx = sourcePoint.x, ex = targetPoint.x;
       const sd = sourceDirection.x || sourceDirection.y;
       const ed = targetDirection.x || targetDirection.y;
-      const k = Math.max(40, Math.hypot(ex - sx, targetPoint.y - sourcePoint.y) / 2);
-      const active = selectedRelation === r.id || state.selected === a.id || state.selected === b.id;
-      const dimmed = state.selected && !active;
+      const hasFocus = Boolean(selectedRelation || selectedRelationIds.size || state.selected);
+      const relationSelected = selectedRelationIds.has(r.id) || selectedRelation === r.id;
+      const active = selectedRelationIds.size
+        ? relationSelected
+        : selectedRelation
+          ? selectedRelation === r.id
+        : state.selected === a.id || state.selected === b.id;
+      const dimmed = hasFocus && !active;
 
       const path = document.createElementNS(NS, 'path');
       const midpoint = { x: (sx + ex) / 2, y: (sourcePoint.y + targetPoint.y) / 2 };
-      const curve = r.via
-        ? `M ${sx} ${sourcePoint.y} Q ${midpoint.x + r.via.x * 2} ${midpoint.y + r.via.y * 2} ${ex} ${targetPoint.y}`
-        : `M ${sx} ${sourcePoint.y} C ${sx + sourceDirection.x * k} ${sourcePoint.y + sourceDirection.y * k}, ${ex + targetDirection.x * k} ${targetPoint.y + targetDirection.y * k}, ${ex} ${targetPoint.y}`;
-      path.setAttribute('d', curve);
+      const routePoints = relationLineStyle === 'straight'
+        ? orthogonalRoute(
+          sourcePoint,
+          targetPoint,
+          sourceDirection,
+          targetDirection,
+          r.waypoints || [],
+        )
+        : [];
+      path.setAttribute('d', relationPath(
+        sourcePoint,
+        targetPoint,
+        sourceDirection,
+        targetDirection,
+        r.via,
+        relationLineStyle,
+        r.waypoints || [],
+      ));
       path.setAttribute('class', `relation-line${active ? ' active' : ''}${dimmed ? ' dimmed' : ''}`);
       path.dataset.relationId = r.id;
       path.addEventListener('click', (event) => {
         event.stopPropagation();
-        selectedRelation = r.id;
-        drawLinks();
+        if (event.ctrlKey || event.metaKey || event.shiftKey) toggleRelationSelection(r.id);
+        else {
+          selectedRelationIds.clear();
+          selectedRelation = r.id;
+          updateProductivityControls();
+          drawLinks();
+        }
       });
+      if (relationLineStyle === 'straight') {
+        path.addEventListener('dblclick', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const rect = canvas.getBoundingClientRect();
+          const point = {
+            x: Math.max(0, (event.clientX - rect.left + canvas.scrollLeft) / state.zoom),
+            y: Math.max(0, (event.clientY - rect.top + canvas.scrollTop) / state.zoom),
+          };
+          if ((r.waypoints || []).length >= 50) {
+            toast('Una relación puede tener como máximo 50 puntos de ruta');
+            return;
+          }
+          const segmentIndex = routePoints.slice(1).reduce((best, end, index) => {
+            const start = routePoints[index];
+            const horizontal = start.y === end.y;
+            const projected = horizontal
+              ? { x: Math.max(Math.min(start.x, end.x), Math.min(Math.max(start.x, end.x), point.x)), y: start.y }
+              : { x: start.x, y: Math.max(Math.min(start.y, end.y), Math.min(Math.max(start.y, end.y), point.y)) };
+            const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+            return distance < best.distance ? { index, distance, projected } : best;
+          }, { index: 0, distance: Infinity, projected: routePoints[1] });
+          r.waypoints = routePoints.slice(1, -1).map((item) => ({ ...item }));
+          r.waypoints.splice(segmentIndex.index, 0, segmentIndex.projected);
+          selectedRelation = r.id;
+          touch();
+          drawLinks();
+        });
+      }
       const tip = document.createElementNS(NS, 'title');
       tip.textContent = `${r.group ? 'N:M (vía puente)' : r.type} · ON DELETE ${r.onDelete} · ON UPDATE ${r.onUpdate}`;
       path.appendChild(tip);
@@ -657,21 +856,104 @@
       glyph(ex, targetPoint.y, targetAnchor.side, r.type === '1:1' ? 'one' : 'many', active, dimmed);
 
       const label = document.createElementNS(NS, 'text');
-      label.setAttribute('x', r.via ? midpoint.x + r.via.x : (sx + ex) / 2 + (sd === ed ? sd * 40 : 0));
-      label.setAttribute('y', (sourcePoint.y + targetPoint.y) / 2 + (r.via ? r.via.y : 0) - 6);
+      const routeMidpoint = relationLineStyle === 'straight' ? polylineMidpoint(routePoints) : midpoint;
+      label.setAttribute('x', relationLineStyle === 'straight'
+        ? routeMidpoint.x
+        : r.via ? midpoint.x + r.via.x : midpoint.x + (sd === ed ? sd * 40 : 0));
+      label.setAttribute('y', relationLineStyle === 'straight'
+        ? routeMidpoint.y - 6
+        : midpoint.y + (r.via ? r.via.y : 0) - 6);
       label.setAttribute('class', `relation-label${active ? ' active' : ''}${dimmed ? ' dimmed' : ''}`);
       label.setAttribute('text-anchor', 'middle');
       label.textContent = r.type === '1:1' ? '1 : 1' : '1 : N';
       links.appendChild(label);
 
-      if (selectedRelation === r.id) {
+      const showHandles = selectedRelationIds.size > 1
+        ? false
+        : selectedRelationIds.size === 1
+          ? selectedRelationIds.has(r.id)
+          : selectedRelation
+        ? selectedRelation === r.id
+        : state.selected === a.id || state.selected === b.id;
+      if (showHandles) {
         addRelationHandle(r, 'sourceAnchor', sourcePoint, 'Mover extremo de origen');
         addRelationHandle(r, 'targetAnchor', targetPoint, 'Mover extremo de destino');
-        addRelationHandle(r, 'via', r.via
-          ? { x: midpoint.x + r.via.x, y: midpoint.y + r.via.y }
-          : { x: midpoint.x + (sd === ed ? sd * 40 : 0), y: midpoint.y }, 'Mover recorrido de la relación');
+        if (relationLineStyle === 'curved') {
+          addRelationHandle(r, 'via', r.via
+            ? { x: midpoint.x + r.via.x, y: midpoint.y + r.via.y }
+            : { x: midpoint.x + (sd === ed ? sd * 40 : 0), y: midpoint.y }, 'Mover recorrido de la relación');
+        } else {
+          (r.waypoints || routePoints.slice(1, -1)).forEach((point, index) => {
+            addRelationHandle(r, 'waypoint', point, `Mover punto recto ${index + 1}`, index, routePoints);
+          });
+        }
       }
     }
+    drawMiniMap();
+  }
+  function toggleRelationSelection(id) {
+    selectedTableIds.clear();
+    state.selected = null;
+    if (!selectedRelationIds.size && selectedRelation) selectedRelationIds.add(selectedRelation);
+    selectedRelation = null;
+    if (selectedRelationIds.has(id)) selectedRelationIds.delete(id);
+    else selectedRelationIds.add(id);
+    updateProductivityControls();
+    drawLinks();
+  }
+  function openBatchRelationEditor() {
+    if (selectedRelationIds.size < 2) return;
+    const dialog = document.createElement('dialog');
+    dialog.className = 'batch-relation-dialog';
+    dialog.innerHTML = `<div class="batch-relation-form">
+      <h2>Editar relaciones seleccionadas</h2>
+      <p>Marca solo los cambios que quieras aplicar a ${selectedRelationIds.size} relaciones.</p>
+      <label><input type="checkbox" name="change-type"> Cardinalidad
+        <select name="type"><option value="1:N">1:N</option><option value="1:1">1:1</option></select>
+      </label>
+      <label><input type="checkbox" name="change-delete"> ON DELETE
+        <select name="onDelete">${ACTIONS.map(action => `<option value="${esc(action)}">${esc(action)}</option>`).join('')}</select>
+      </label>
+      <label><input type="checkbox" name="change-update"> ON UPDATE
+        <select name="onUpdate">${ACTIONS.map(action => `<option value="${esc(action)}">${esc(action)}</option>`).join('')}</select>
+      </label>
+      <div class="dialog-actions"><button type="button" data-action="cancel">Cancelar</button><button type="button" data-action="apply" class="btn-primary">Aplicar</button></div>
+    </div>`;
+    document.body.appendChild(dialog);
+    dialog.querySelector('[data-action="cancel"]').addEventListener('click', () => {
+      dialog.close('cancel');
+      dialog.remove();
+    });
+    dialog.querySelector('[data-action="apply"]').addEventListener('click', () => {
+      const changed = ['change-type', 'change-delete', 'change-update']
+        .some(name => dialog.querySelector(`[name="${name}"]`).checked);
+      if (!changed) {
+        dialog.close('apply');
+        dialog.remove();
+        return;
+      }
+      const candidate = JSON.parse(JSON.stringify(state));
+      const relations = state.relations.filter(relation => selectedRelationIds.has(relation.id));
+      try {
+        relations.forEach(relation => {
+          const patch = {};
+          if (dialog.querySelector('[name="change-type"]').checked) patch.type = dialog.querySelector('[name="type"]').value;
+          if (dialog.querySelector('[name="change-delete"]').checked) patch.onDelete = dialog.querySelector('[name="onDelete"]').value;
+          if (dialog.querySelector('[name="change-update"]').checked) patch.onUpdate = dialog.querySelector('[name="onUpdate"]').value;
+          updateRelation(candidate, relation.id, patch);
+        });
+        state.tables = candidate.tables;
+        state.relations = candidate.relations;
+        commit(true);
+        updateProductivityControls();
+      } catch (error) {
+        toast(`No se pudieron actualizar las relaciones: ${error.message}`);
+      }
+      dialog.close('apply');
+      dialog.remove();
+    });
+    dialog.addEventListener('close', () => dialog.remove(), { once: true });
+    dialog.showModal();
   }
 
   function setZoom(z, anchorX = canvas.clientWidth / 2, anchorY = canvas.clientHeight / 2) {
@@ -694,6 +976,7 @@
     relationControls.style.transform = `scale(${state.zoom})`;
     relationControls.style.transformOrigin = 'top left';
     $('#zoomLabel').textContent = Math.round(state.zoom * 100) + '%';
+    drawMiniMap();
   }
 
   function fitToScreen() {
@@ -718,28 +1001,115 @@
 
   function organizeTables() {
     if (!state.tables.length) return;
-    const widths = state.tables.map((table) => cardEls.get(table.id)?.offsetWidth || 230);
-    const heights = state.tables.map((table) => cardEls.get(table.id)?.offsetHeight || 160);
-    const cellWidth = Math.max(...widths);
-    const cellHeight = Math.max(...heights);
-    const columnCount = Math.ceil(Math.sqrt(state.tables.length));
-    const gap = 50;
-    const margin = 40;
-    let changed = false;
-
-    state.tables.forEach((table, index) => {
-      const x = margin + (index % columnCount) * (cellWidth + gap);
-      const y = margin + Math.floor(index / columnCount) * (cellHeight + gap);
-      if (table.x !== x || table.y !== y) changed = true;
-      table.x = x;
-      table.y = y;
-    });
-
-    if (changed) {
-      commit(true);
-      toast('Tablas organizadas; puedes deshacer el cambio');
+    const selected = state.tables.filter(table => selectedTableIds.has(table.id));
+    const tables = selected.length > 1 ? selected : [...state.tables];
+    const mode = $('#layoutSelect').value;
+    const ranks = new Map(tables.map(table => [table.id, 0]));
+    if (mode === 'dependencies') {
+      const included = new Set(tables.map(table => table.id));
+      for (let pass = 0; pass < tables.length; pass++) {
+        let changed = false;
+        state.relations.forEach(relation => {
+          if (!included.has(relation.sourceTable) || !included.has(relation.targetTable)) return;
+          const rank = Math.min(tables.length - 1, ranks.get(relation.sourceTable) + 1);
+          if (rank > ranks.get(relation.targetTable)) { ranks.set(relation.targetTable, rank); changed = true; }
+        });
+        if (!changed) break;
+      }
+    } else if (mode === 'layers') {
+      tables.forEach(table => {
+        const isReferenced = state.relations.some(relation => relation.targetTable === table.id);
+        ranks.set(table.id, table.junction ? 2 : isReferenced ? 1 : 0);
+      });
     }
+    const margin = 50, gapX = 300, gapY = 220;
+    if (mode === 'radial') {
+      const radius = Math.max(220, tables.length * 48);
+      const center = margin + radius;
+      tables.forEach((table, index) => {
+        const angle = (index / tables.length) * Math.PI * 2 - Math.PI / 2;
+        table.x = Math.max(0, Math.round(center + Math.cos(angle) * radius));
+        table.y = Math.max(0, Math.round(center + Math.sin(angle) * radius));
+      });
+    } else if (mode === 'horizontal') {
+      tables.slice().sort((a, b) => a.x - b.x || a.y - b.y).forEach((table, index) => {
+        table.x = margin + index * gapX;
+        table.y = margin + (index % 2) * gapY;
+      });
+    } else {
+      const rows = new Map();
+      tables.forEach(table => {
+        const rank = ranks.get(table.id);
+        const row = rows.get(rank) || 0;
+        table.x = margin + rank * gapX;
+        table.y = margin + row * gapY;
+        rows.set(rank, row + 1);
+      });
+    }
+    const movedIds = new Set(tables.map(table => table.id));
+    state.relations.forEach(relation => {
+      if (!movedIds.has(relation.sourceTable) && !movedIds.has(relation.targetTable)) return;
+      delete relation.sourceAnchor;
+      delete relation.targetAnchor;
+      delete relation.via;
+      delete relation.waypoints;
+    });
+    commit(true);
+    toast(`${selected.length > 1 ? 'Selección organizada' : 'Tablas organizadas'}; puedes deshacer el cambio`);
     fitToScreen();
+  }
+
+  function alignTables(action) {
+    const tables = state.tables.filter(table => selectedTableIds.has(table.id));
+    if (tables.length < 2) return;
+    const dimensions = tables.map(table => ({
+      table,
+      width: cardEls.get(table.id)?.offsetWidth || 230,
+      height: cardEls.get(table.id)?.offsetHeight || 160,
+    }));
+    if (action.startsWith('align-')) {
+      const horizontal = ['align-left', 'align-center-x', 'align-right'].includes(action);
+      const starts = dimensions.map(item => horizontal ? item.table.x : item.table.y);
+      const sizes = dimensions.map(item => horizontal ? item.width : item.height);
+      const target = action.endsWith('left') || action.endsWith('top')
+        ? Math.min(...starts)
+        : action.endsWith('right') || action.endsWith('bottom')
+          ? Math.max(...starts.map((start, index) => start + sizes[index]))
+          : starts.reduce((sum, start, index) => sum + start + sizes[index] / 2, 0) / starts.length;
+      dimensions.forEach(({ table, width, height }) => {
+        const size = horizontal ? width : height;
+        const position = action.endsWith('left') || action.endsWith('top')
+          ? target
+          : action.endsWith('right') || action.endsWith('bottom') ? target - size : target - size / 2;
+        if (horizontal) table.x = Math.max(0, Math.round(position));
+        else table.y = Math.max(0, Math.round(position));
+      });
+    } else {
+      if (tables.length < 3) return toast('Se necesitan al menos tres tablas para distribuir.');
+      const horizontal = action === 'distribute-horizontal';
+      const sorted = dimensions.slice().sort((a, b) => horizontal ? a.table.x - b.table.x : a.table.y - b.table.y);
+      const size = item => horizontal ? item.width : item.height;
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const start = horizontal ? first.table.x : first.table.y;
+      const end = (horizontal ? last.table.x : last.table.y) + size(last);
+      const gap = (end - start - sorted.reduce((sum, item) => sum + size(item), 0)) / (sorted.length - 1);
+      let position = start;
+      sorted.forEach(item => {
+        if (horizontal) item.table.x = Math.max(0, Math.round(position));
+        else item.table.y = Math.max(0, Math.round(position));
+        position += size(item) + gap;
+      });
+    }
+    const movedIds = new Set(tables.map(table => table.id));
+    state.relations.forEach(relation => {
+      if (!movedIds.has(relation.sourceTable) && !movedIds.has(relation.targetTable)) return;
+      delete relation.sourceAnchor;
+      delete relation.targetAnchor;
+      delete relation.via;
+      delete relation.waypoints;
+    });
+    commit(true);
   }
 
   function centerTable(tableId = state.selected) {
@@ -754,6 +1124,66 @@
       top: Math.max(0, (table.y + card.offsetHeight / 2) * state.zoom - canvas.clientHeight / 2),
       behavior: 'smooth',
     });
+  }
+  function centerSelectedTables() {
+    const selected = state.tables.filter(table => selectedTableIds.has(table.id));
+    if (selected.length < 2) return centerTable(selected[0]?.id || state.selected);
+    const bounds = selected.map(table => {
+      const card = cardEls.get(table.id);
+      return {
+        left: table.x, top: table.y,
+        right: table.x + (card?.offsetWidth || 230),
+        bottom: table.y + (card?.offsetHeight || 160),
+      };
+    });
+    const centerX = (Math.min(...bounds.map(item => item.left)) + Math.max(...bounds.map(item => item.right))) / 2;
+    const centerY = (Math.min(...bounds.map(item => item.top)) + Math.max(...bounds.map(item => item.bottom))) / 2;
+    canvas.scrollTo({
+      left: Math.max(0, centerX * state.zoom - canvas.clientWidth / 2),
+      top: Math.max(0, centerY * state.zoom - canvas.clientHeight / 2),
+      behavior: 'smooth',
+    });
+  }
+  function drawMiniMap() {
+    const miniMap = $('#miniMap');
+    if (!miniMap || miniMap.hidden) return;
+    const rect = miniMap.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const context = miniMap.getContext('2d');
+    if (!context) return;
+    const ratio = window.devicePixelRatio || 1;
+    miniMap.width = Math.round(rect.width * ratio);
+    miniMap.height = Math.round(rect.height * ratio);
+    context.scale(ratio, ratio);
+    context.clearRect(0, 0, rect.width, rect.height);
+    context.fillStyle = '#f4f7fb';
+    context.fillRect(0, 0, rect.width, rect.height);
+    if (!state.tables.length) return;
+    const items = state.tables.map(table => {
+      const card = cardEls.get(table.id);
+      return { table, width: card?.offsetWidth || 230, height: card?.offsetHeight || 160 };
+    });
+    const minX = Math.min(...items.map(item => item.table.x)) - 40;
+    const minY = Math.min(...items.map(item => item.table.y)) - 40;
+    const maxX = Math.max(...items.map(item => item.table.x + item.width)) + 40;
+    const maxY = Math.max(...items.map(item => item.table.y + item.height)) + 40;
+    const mapScale = Math.min((rect.width - 12) / Math.max(1, maxX - minX), (rect.height - 12) / Math.max(1, maxY - minY));
+    const offsetX = (rect.width - (maxX - minX) * mapScale) / 2;
+    const offsetY = (rect.height - (maxY - minY) * mapScale) / 2;
+    items.forEach(({ table, width, height }) => {
+      context.fillStyle = table.color || '#6d94c7';
+      context.fillRect(offsetX + (table.x - minX) * mapScale, offsetY + (table.y - minY) * mapScale,
+        Math.max(3, width * mapScale), Math.max(3, height * mapScale));
+    });
+    context.strokeStyle = '#18253a';
+    context.lineWidth = 1;
+    context.strokeRect(
+      offsetX + (canvas.scrollLeft / state.zoom - minX) * mapScale,
+      offsetY + (canvas.scrollTop / state.zoom - minY) * mapScale,
+      canvas.clientWidth / state.zoom * mapScale,
+      canvas.clientHeight / state.zoom * mapScale,
+    );
+    miniMap.dataset.bounds = JSON.stringify({ minX, minY, mapScale, offsetX, offsetY });
   }
 
   /* ---------- Panel de propiedades ---------- */
@@ -1369,6 +1799,9 @@
   }
 
   function applyModel(m, status) {
+    state.presentationActive = false;
+    state.presentationStep = -1;
+    updatePresentation();
     state.tables = m.tables;
     state.relations = m.relations;
     selectedRelation = null;
@@ -1528,8 +1961,123 @@
     toast('Ejemplo cargado: incluye relaciones 1:1, 1:N y N:M');
   }
 
+  function readStoredList(key) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(value)) throw new Error('El contenido guardado no es una lista válida');
+      return value;
+    } catch (error) {
+      toast(`No se pudieron leer los datos guardados: ${error.message}`);
+      return [];
+    }
+  }
+
+  function persistStoredList(key, list) {
+    try {
+      localStorage.setItem(key, JSON.stringify(list));
+      return true;
+    } catch (error) {
+      toast(`No se pudieron guardar los datos: ${error.message}`);
+      return false;
+    }
+  }
+
+  function openVersions() {
+    const key = 'dbdesigner:versions:v1';
+    const versions = readStoredList(key);
+    const modal = document.createElement('div');
+    modal.className = 'relation-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Versiones guardadas');
+    modal.innerHTML = `<div class="modal-card template-card">
+      <h3>Versiones guardadas</h3>
+      <p class="muted">Guarda hitos con nombre y restáuralos independientemente de deshacer.</p>
+      <label for="versionName">Nombre del hito</label><input class="input" id="versionName" maxlength="60" placeholder="Ej.: Modelo inicial">
+      <div class="modal-actions"><button class="btn primary" id="saveVersion">Guardar versión actual</button></div>
+      <label for="versionSelect">Versiones disponibles</label>
+      <select id="versionSelect" class="control" size="5">${versions.map(version =>
+        `<option value="${esc(version.id)}">${esc(version.name)} · ${esc(new Date(version.createdAt).toLocaleString())}</option>`
+      ).join('')}</select>
+      <div class="modal-actions"><button class="btn" id="closeVersions">Cerrar</button><span class="tab-spacer"></span>
+      <button class="btn" id="deleteVersion">Eliminar</button><button class="btn primary" id="restoreVersion">Restaurar</button></div>
+    </div>`;
+    document.body.appendChild(modal);
+    const select = modal.querySelector('#versionSelect');
+    if (versions.length) select.selectedIndex = 0;
+    const close = () => modal.remove();
+    modal.querySelector('#closeVersions').addEventListener('click', close);
+    modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    modal.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
+    modal.querySelector('#saveVersion').addEventListener('click', () => {
+      const name = modal.querySelector('#versionName').value.trim();
+      if (!name) { modal.querySelector('#versionName').focus(); return; }
+      versions.unshift({ id: `version-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name, createdAt: new Date().toISOString(), data: modelData() });
+      versions.splice(50);
+      if (persistStoredList(key, versions)) { close(); toast(`Versión "${name}" guardada`); }
+    });
+    modal.querySelector('#restoreVersion').addEventListener('click', () => {
+      const version = versions.find(item => item.id === select.value);
+      if (!version) { toast('Selecciona una versión para restaurar'); return; }
+      if (!confirm(`¿Restaurar "${version.name}"? El modelo actual será reemplazado.`)) return;
+      try {
+        const loaded = loadModel(version.data, `Versión "${version.name}" restaurada`);
+        close();
+        toast(loaded.warnings.length ? `Versión restaurada con ${loaded.warnings.length} advertencia(s)` : `Versión "${version.name}" restaurada`);
+      } catch (error) {
+        toast(`No se pudo restaurar la versión: ${error.message}`);
+      }
+    });
+    modal.querySelector('#deleteVersion').addEventListener('click', () => {
+      const version = versions.find(item => item.id === select.value);
+      if (!version || !confirm(`¿Eliminar la versión "${version.name}"?`)) return;
+      if (persistStoredList(key, versions.filter(item => item.id !== version.id))) { close(); openVersions(); }
+    });
+    modal.querySelector('#versionName').focus();
+  }
+
+  function updatePresentation() {
+    const toolbar = $('#presentationToolbar');
+    toolbar.hidden = !state.presentationActive;
+    if (!state.presentationActive) return;
+    $('#presentationStatus').textContent = state.presentationStep < 0
+      ? `Inicio · ${state.tables.length} tablas`
+      : `Paso ${state.presentationStep + 1} de ${state.tables.length} · ${state.tables[state.presentationStep]?.name || ''}`;
+    $('#presentationPreviousBtn').disabled = state.presentationStep <= 0;
+    $('#presentationNextBtn').disabled = state.presentationStep >= state.tables.length - 1;
+  }
+
+  function startPresentation() {
+    if (!state.tables.length) { toast('Agrega tablas antes de iniciar la presentación'); return; }
+    state.presentationActive = true;
+    state.presentationStep = 0;
+    updatePresentation();
+    renderCanvas();
+    drawLinks();
+  }
+
+  function advancePresentation(direction) {
+    state.presentationStep = Math.max(0, Math.min(state.tables.length - 1, state.presentationStep + direction));
+    updatePresentation();
+    renderCanvas();
+    drawLinks();
+  }
+
+  function endPresentation() {
+    state.presentationActive = false;
+    state.presentationStep = -1;
+    updatePresentation();
+    renderCanvas();
+    drawLinks();
+  }
+
   function openTemplatesModal() {
-    const templates = window.DBTemplates.listTemplates();
+    const builtins = window.DBTemplates.listTemplates();
+    const custom = readStoredList('dbdesigner:templates:v1');
+    const templates = [
+      ...builtins.map(template => ({ ...template, custom: false })),
+      ...custom.map(template => ({ ...template, custom: true })),
+    ];
     const modal = document.createElement('div');
     modal.className = 'relation-modal';
     modal.setAttribute('role', 'dialog');
@@ -1539,14 +2087,20 @@
       `<div class="modal-card template-card"><h3 id="templatesTitle">Plantillas de modelos</h3>` +
       `<p class="muted">Elige una estructura inicial que podrás editar libremente.</p>` +
       `<label for="templateSelect">Plantilla</label>` +
-      `<select id="templateSelect" class="control">${templates.map((template) => `<option value="${esc(template.id)}">${esc(template.name)}</option>`).join('')}</select>` +
+      `<select id="templateSelect" class="control">${templates.map((template) => `<option value="${esc(template.id)}">${esc(template.name)}${template.custom ? ' · Personalizada' : ' · Incluida'}</option>`).join('')}</select>` +
       `<p class="template-description" id="templateDescription"></p>` +
-      `<div class="modal-actions"><button class="btn" id="cancelTemplates">Cancelar</button><button class="btn primary" id="loadTemplate">Cargar plantilla</button></div></div>`;
+      `<label for="templateName">Nombre para guardar una copia</label><input class="input" id="templateName" maxlength="60" placeholder="Ej.: Inventario escolar">` +
+      `<div class="modal-actions"><button class="btn" id="cancelTemplates">Cancelar</button><span class="tab-spacer"></span>` +
+      `<button class="btn" id="deleteTemplate" type="button">Eliminar propia</button><button class="btn" id="updateTemplate" type="button">Actualizar propia</button><button class="btn" id="saveTemplateCopy" type="button">Guardar copia actual</button>` +
+      `<button class="btn primary" id="loadTemplate">Cargar plantilla</button></div></div>`;
     document.body.appendChild(modal);
     const selectTemplate = modal.querySelector('#templateSelect');
     const description = modal.querySelector('#templateDescription');
     const updateDescription = () => {
-      description.textContent = templates.find((template) => template.id === selectTemplate.value)?.description || '';
+      const template = templates.find((item) => item.id === selectTemplate.value);
+      description.textContent = template?.description || '';
+      modal.querySelector('#deleteTemplate').disabled = !template?.custom;
+      modal.querySelector('#updateTemplate').disabled = !template?.custom;
     };
     const close = () => modal.remove();
     selectTemplate.addEventListener('change', updateDescription);
@@ -1574,7 +2128,7 @@
         }
       }
       try {
-        const data = window.DBTemplates.createTemplate(template.id, makeId);
+        const data = template.custom ? template.data : window.DBTemplates.createTemplate(template.id, makeId);
         const loaded = loadModel(data, `Plantilla "${template.name}" cargada`);
         close();
         toast(loaded.warnings.length
@@ -1582,6 +2136,46 @@
           : `Plantilla "${template.name}" cargada`);
       } catch (error) {
         toast(`No se pudo cargar la plantilla: ${error.message}`);
+      }
+    });
+    modal.querySelector('#saveTemplateCopy').addEventListener('click', () => {
+      const name = modal.querySelector('#templateName').value.trim();
+      if (!name) { modal.querySelector('#templateName').focus(); return; }
+      const saved = readStoredList('dbdesigner:templates:v1');
+      if (!state.tables.length) { toast('Crea o carga un modelo antes de guardar una plantilla'); return; }
+      if (saved.length >= 50) { toast('Ya tienes 50 plantillas personalizadas; elimina una antes de guardar otra'); return; }
+      saved.push({
+        id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        description: `${state.tables.length} tablas · ${state.relations.length} relaciones`,
+        data: modelData(),
+      });
+      modal.querySelector('#updateTemplate').addEventListener('click', () => {
+        const selected = templates.find(item => item.id === selectTemplate.value);
+        if (!selected?.custom || !state.tables.length) {
+          toast('Carga o crea un modelo antes de actualizar una plantilla propia');
+          return;
+        }
+        const saved = readStoredList('dbdesigner:templates:v1');
+        const index = saved.findIndex(item => item.id === selected.id);
+        if (index < 0) return;
+        saved[index] = { ...saved[index], data: modelData(), description: `${state.tables.length} tablas · ${state.relations.length} relaciones` };
+        if (persistStoredList('dbdesigner:templates:v1', saved)) {
+          close();
+          toast(`Plantilla "${selected.name}" actualizada`);
+        }
+      });
+      if (persistStoredList('dbdesigner:templates:v1', saved)) {
+        close();
+        toast(`Plantilla "${name}" guardada`);
+      }
+    });
+    modal.querySelector('#deleteTemplate').addEventListener('click', () => {
+      const selected = templates.find(item => item.id === selectTemplate.value);
+      if (!selected?.custom || !confirm(`¿Eliminar la plantilla "${selected.name}"?`)) return;
+      if (persistStoredList('dbdesigner:templates:v1', custom.filter(item => item.id !== selected.id))) {
+        close();
+        openTemplatesModal();
       }
     });
     updateDescription();
@@ -1664,7 +2258,7 @@
     toast(copies === 1 ? 'Copia descargada' : 'Copias descargadas');
   }
 
-  function buildDiagramSvg() {
+  function buildDiagramSvg({ background = '#f4f8fd' } = {}) {
     if (!state.tables.length) throw new Error('Agrega al menos una tabla al diagrama');
     const margin = 80;
     const metrics = new Map(state.tables.map((table) => {
@@ -1684,7 +2278,7 @@
     state.tables.forEach((table, index) => {
       out.push(`<clipPath id="table-head-${index}"><rect x="${table.x + margin}" y="${table.y + margin}" width="${metrics.get(table.id).width}" height="36" rx="7"/></clipPath>`);
     });
-    out.push('</defs>', `<rect width="${width}" height="${height}" fill="#f4f8fd"/>`, `<rect width="${width}" height="${height}" fill="url(#grid)"/>`);
+    out.push('</defs>', `<rect width="${width}" height="${height}" fill="${esc(background)}"/>`, `<rect width="${width}" height="${height}" fill="url(#grid)"/>`);
 
     for (const relation of state.relations) {
       const source = getTable(state, relation.sourceTable);
@@ -1720,11 +2314,29 @@
       const sy = sourcePoint.y, ty = targetPoint.y;
       const sourceDirection = SIDE_VECTOR[sourceAnchor.side];
       const targetDirection = SIDE_VECTOR[targetAnchor.side];
-      const curve = Math.max(40, Math.hypot(ex - sx, ty - sy) / 2);
       const midpoint = { x: (sx + ex) / 2, y: (sy + ty) / 2 };
-      const path = relation.via
-        ? `M ${sx} ${sy} Q ${midpoint.x + relation.via.x * 2} ${midpoint.y + relation.via.y * 2} ${ex} ${ty}`
-        : `M ${sx} ${sy} C ${sx + sourceDirection.x * curve} ${sy + sourceDirection.y * curve}, ${ex + targetDirection.x * curve} ${ty + targetDirection.y * curve}, ${ex} ${ty}`;
+      const waypoints = (relation.waypoints || []).map((waypoint) => ({
+        x: waypoint.x + margin,
+        y: waypoint.y + margin,
+      }));
+      const routePoints = relationLineStyle === 'straight'
+        ? orthogonalRoute(
+          { x: sx, y: sy },
+          { x: ex, y: ty },
+          sourceDirection,
+          targetDirection,
+          waypoints,
+        )
+        : [];
+      const path = relationPath(
+        { x: sx, y: sy },
+        { x: ex, y: ty },
+        sourceDirection,
+        targetDirection,
+        relation.via,
+        relationLineStyle,
+        waypoints,
+      );
       out.push(`<path d="${path}" fill="none" stroke="#537ca8" stroke-width="2.2"/>`);
       for (const [x, y, side, many] of [[sx, sy, sourceAnchor.side, false], [ex, ty, targetAnchor.side, relation.type !== '1:1']]) {
         const normal = SIDE_VECTOR[side];
@@ -1735,7 +2347,14 @@
           out.push(`<path d="M ${x + normal.x * 9 - tangent.x * 6} ${y + normal.y * 9 - tangent.y * 6} L ${x + normal.x * 9 + tangent.x * 6} ${y + normal.y * 9 + tangent.y * 6} M ${x + normal.x * 14 - tangent.x * 6} ${y + normal.y * 14 - tangent.y * 6} L ${x + normal.x * 14 + tangent.x * 6} ${y + normal.y * 14 + tangent.y * 6}" fill="none" stroke="#537ca8" stroke-width="2"/>`);
         }
       }
-      out.push(`<text x="${relation.via ? midpoint.x + relation.via.x : (sx + ex) / 2 + (sd === ed ? sd * 40 : 0)}" y="${(sy + ty) / 2 + (relation.via ? relation.via.y : 0) - 6}" fill="#315477" font-family="sans-serif" font-size="11" font-weight="700" text-anchor="middle">${relation.type === '1:1' ? '1 : 1' : '1 : N'}</text>`);
+      const labelMidpoint = relationLineStyle === 'straight' ? polylineMidpoint(routePoints) : midpoint;
+      const labelX = relationLineStyle === 'straight'
+        ? labelMidpoint.x
+        : relation.via ? midpoint.x + relation.via.x : midpoint.x + (sd === ed ? sd * 40 : 0);
+      const labelY = relationLineStyle === 'straight'
+        ? labelMidpoint.y - 6
+        : (sy + ty) / 2 + (relation.via ? relation.via.y : 0) - 6;
+      out.push(`<text x="${labelX}" y="${labelY}" fill="#315477" font-family="sans-serif" font-size="11" font-weight="700" text-anchor="middle">${relation.type === '1:1' ? '1 : 1' : '1 : N'}</text>`);
     }
 
     state.tables.forEach((table, index) => {
@@ -1771,29 +2390,84 @@
     }
   }
 
-  async function exportDiagramPng() {
+  function openExportSettings(defaultFormat = 'png') {
+    const modal = document.createElement('div');
+    modal.className = 'relation-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Opciones de exportación del diagrama');
+    modal.innerHTML = `<div class="modal-card template-card">
+      <h3>Exportar diagrama</h3>
+      <label for="diagramExportFormat">Formato</label><select class="control" id="diagramExportFormat"><option value="png">PNG</option><option value="pdf">PDF (imprimir o guardar)</option></select>
+      <label for="diagramExportScale">Escala / tamaño de impresión</label><select class="control" id="diagramExportScale"><option value="0.5">50 %</option><option value="0.75">75 %</option><option value="1" selected>100 %</option><option value="1.25">125 %</option><option value="1.5">150 %</option></select>
+      <label for="diagramExportOrientation">Orientación</label><select class="control" id="diagramExportOrientation"><option value="auto">Automática</option><option value="landscape">Horizontal</option><option value="portrait">Vertical</option></select>
+      <label for="diagramExportBackground">Color de fondo</label><input class="input" id="diagramExportBackground" type="color" value="#f4f8fd">
+      <p class="muted">PDF abre la vista de impresión del navegador; allí elige “Guardar como PDF”.</p>
+      <div class="modal-actions"><button class="btn" id="cancelDiagramExport">Cancelar</button><span class="tab-spacer"></span><button class="btn primary" id="confirmDiagramExport">Exportar</button></div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#diagramExportFormat').value = defaultFormat;
+    const close = () => modal.remove();
+    modal.querySelector('#cancelDiagramExport').addEventListener('click', close);
+    modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    modal.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
+    modal.querySelector('#confirmDiagramExport').addEventListener('click', () => {
+      const options = {
+        format: modal.querySelector('#diagramExportFormat').value,
+        scale: Number(modal.querySelector('#diagramExportScale').value),
+        orientation: modal.querySelector('#diagramExportOrientation').value,
+        background: modal.querySelector('#diagramExportBackground').value,
+      };
+      close();
+      exportConfiguredDiagram(options);
+    });
+    modal.querySelector('#diagramExportFormat').focus();
+  }
+
+  async function exportConfiguredDiagram(options) {
     let imageUrl;
     try {
-      const { svg, width, height } = buildDiagramSvg();
-      if (width * height > 48000000) throw new Error('El diagrama es demasiado grande para PNG; exporta como SVG');
+      const { svg, width, height } = buildDiagramSvg({ background: options.background });
+      if (options.format === 'pdf') {
+        const popup = window.open('', '_blank');
+        if (!popup) throw new Error('El navegador bloqueó la ventana de impresión. Permite ventanas emergentes e inténtalo de nuevo.');
+        const orientation = options.orientation === 'auto'
+          ? (width >= height ? 'landscape' : 'portrait')
+          : options.orientation;
+        popup.document.open();
+        popup.document.write(`<!doctype html><html><head><title>DB Designer</title><style>@page{size:A4 ${orientation};margin:8mm}html,body{margin:0;background:${options.background}}svg{display:block;width:${options.scale * 100}%;height:auto;max-width:none;object-fit:contain}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>${svg}<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),200));</script></body></html>`);
+        popup.document.close();
+        toast('Se abrió la vista de impresión para guardar el diagrama como PDF');
+        return;
+      }
       imageUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
       const image = new Image();
       image.src = imageUrl;
       await image.decode();
       const target = document.createElement('canvas');
-      target.width = width;
-      target.height = height;
+      const scale = options.scale;
+      let outputWidth = Math.round(width * scale), outputHeight = Math.round(height * scale);
+      const orientationMismatch = options.orientation !== 'auto' &&
+        ((options.orientation === 'landscape') !== (width >= height));
+      if (orientationMismatch) [outputWidth, outputHeight] = [outputHeight, outputWidth];
+      if (outputWidth * outputHeight > 48000000) throw new Error('El diagrama supera 48 megapíxeles; reduce la escala');
+      target.width = outputWidth;
+      target.height = outputHeight;
       const context = target.getContext('2d');
       if (!context) throw new Error('El navegador no pudo crear el lienzo de exportación');
-      context.fillStyle = '#f4f8fd';
-      context.fillRect(0, 0, width, height);
-      context.drawImage(image, 0, 0);
+      context.fillStyle = options.background;
+      context.fillRect(0, 0, outputWidth, outputHeight);
+      if (orientationMismatch) {
+        context.translate(outputWidth / 2, outputHeight / 2);
+        context.rotate(Math.PI / 2);
+        context.drawImage(image, -outputHeight / 2, -outputWidth / 2, outputHeight, outputWidth);
+      } else context.drawImage(image, 0, 0, outputWidth, outputHeight);
       const blob = await new Promise((resolve) => target.toBlob(resolve, 'image/png'));
       if (!blob) throw new Error('El navegador no pudo generar el archivo PNG');
       download('diagrama-db-designer.png', blob, 'image/png');
-      toast('Diagrama PNG descargado');
+      toast(`Diagrama PNG descargado al ${Math.round(scale * 100)} %`);
     } catch (err) {
-      toast(`No se pudo exportar PNG: ${err.message}`);
+      toast(`No se pudo exportar: ${err.message}`);
     } finally {
       if (imageUrl) URL.revokeObjectURL(imageUrl);
     }
@@ -1946,6 +2620,7 @@
     toast('Modo relación: selecciona la tabla origen y luego la destino');
   };
   $('#newBtn').onclick = newProject;
+  $('#versionsBtn').onclick = openVersions;
   $('#templatesBtn').onclick = openTemplatesModal;
   $('#importSqlBtn').onclick = openSqlImportModal;
   $('#sampleBtn').onclick = loadSample;
@@ -1955,6 +2630,25 @@
   $('#undoBtn').onclick = undo;
   $('#redoBtn').onclick = redo;
   $('#organizeTablesBtn').onclick = organizeTables;
+  $('#alignTablesBtn').onclick = () => {
+    $('#selectionActions').querySelector('button')?.focus();
+  };
+  $('#selectionActions').addEventListener('click', event => {
+    const button = event.target.closest('[data-selection-action]');
+    if (button) alignTables(button.dataset.selectionAction);
+  });
+  $('#gridBtn').onclick = (event) => {
+    const visible = canvas.classList.toggle('no-grid') === false;
+    event.currentTarget.setAttribute('aria-pressed', String(visible));
+  };
+  $('#snapToGrid').addEventListener('change', event => { snapToGrid = event.currentTarget.checked; });
+  $('#miniMapToggleBtn').onclick = () => {
+    const map = $('#miniMap');
+    map.hidden = !map.hidden;
+    $('#miniMapToggleBtn').setAttribute('aria-pressed', String(!map.hidden));
+    if (!map.hidden) drawMiniMap();
+  };
+  $('#batchRelationsBtn').onclick = openBatchRelationEditor;
   $('#openBtn').onclick = () => $('#fileInput').click();
   $('#saveBtn').onclick = () => {
     download('modelo-base-datos.json', JSON.stringify(modelData(), null, 2), 'application/json');
@@ -1982,7 +2676,12 @@
   $('#applySqlChangesBtn').onclick = () => openSqlImportModal($('#sqlEditor').value, true);
   $('#resetSqlBtn').onclick = resetSqlDraft;
   $('#exportSvgBtn').onclick = exportDiagramSvg;
-  $('#exportPngBtn').onclick = exportDiagramPng;
+  $('#exportPngBtn').onclick = () => openExportSettings('png');
+  $('#exportPdfBtn').onclick = () => openExportSettings('pdf');
+  $('#presentBtn').onclick = startPresentation;
+  $('#presentationPreviousBtn').onclick = () => advancePresentation(-1);
+  $('#presentationNextBtn').onclick = () => advancePresentation(1);
+  $('#presentationEndBtn').onclick = endPresentation;
   $('#fileInput').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2001,10 +2700,25 @@
     autosave();
     renderOutput();
   };
+  $('#relationLineStyle').onchange = (event) => {
+    const style = event.currentTarget.value;
+    if (!['curved', 'straight'].includes(style)) {
+      event.currentTarget.value = relationLineStyle;
+      toast('El estilo de las conexiones seleccionado no es válido');
+      return;
+    }
+    relationLineStyle = style;
+    try {
+      localStorage.setItem(RELATION_STYLE_KEY, relationLineStyle);
+    } catch (error) {
+      toast(`No se pudo guardar la preferencia de estilo: ${error.message}`);
+    }
+    drawLinks();
+  };
   $('#zoomIn').onclick = () => setZoom(state.zoom + 0.1);
   $('#zoomOut').onclick = () => setZoom(state.zoom - 0.1);
   $('#fitBtn').onclick = fitToScreen;
-  $('#centerSelectedBtn').onclick = () => centerTable();
+  $('#centerSelectedBtn').onclick = centerSelectedTables;
   $('#zoomLabel').onclick = () => setZoom(1);
   $('#diagramSearch').addEventListener('input', () => {
     state.searchTarget = null;
@@ -2033,6 +2747,21 @@
       e.clientY - rect.top
     );
   }, { passive: false });
+  canvas.addEventListener('scroll', drawMiniMap, { passive: true });
+  window.addEventListener('resize', drawMiniMap);
+  $('#miniMap').addEventListener('click', event => {
+    const map = event.currentTarget;
+    const bounds = JSON.parse(map.dataset.bounds || 'null');
+    if (!bounds) return;
+    const rect = map.getBoundingClientRect();
+    const x = (event.clientX - rect.left - bounds.offsetX) / bounds.mapScale + bounds.minX;
+    const y = (event.clientY - rect.top - bounds.offsetY) / bounds.mapScale + bounds.minY;
+    canvas.scrollTo({
+      left: Math.max(0, x * state.zoom - canvas.clientWidth / 2),
+      top: Math.max(0, y * state.zoom - canvas.clientHeight / 2),
+      behavior: 'smooth',
+    });
+  });
   canvas.addEventListener('pointerdown', (event) => {
     if (event.button !== 1 && !(event.button === 0 && spacePan)) return;
     if (event.button === 0 && event.target.closest('button, input, select, textarea')) return;
@@ -2086,7 +2815,12 @@
     if (e.target !== canvas && e.target !== layer) return;
     canvas.focus({ preventScroll: true });
     if (state.relationSource) { state.relationSource = null; renderCanvas(); return; }
-    if (selectedRelation) { selectedRelation = null; drawLinks(); }
+    if (selectedRelation || selectedRelationIds.size) {
+      selectedRelation = null;
+      selectedRelationIds.clear();
+      updateProductivityControls();
+      drawLinks();
+    }
     if (state.selected) select(null);
   });
   canvas.addEventListener('contextmenu', (event) => {
@@ -2167,6 +2901,16 @@
 
   attachResizeHandle(document.querySelector('.resize-handle[data-side="left"]'), 'left');
   attachResizeHandle(document.querySelector('.resize-handle[data-side="right"]'), 'right');
+
+  try {
+    const savedRelationStyle = localStorage.getItem(RELATION_STYLE_KEY);
+    if (savedRelationStyle === 'curved' || savedRelationStyle === 'straight') {
+      relationLineStyle = savedRelationStyle;
+    }
+    $('#relationLineStyle').value = relationLineStyle;
+  } catch (error) {
+    toast(`No se pudo restaurar la preferencia de estilo: ${error.message}`);
+  }
 
   renderAll();
   resetHistory();
